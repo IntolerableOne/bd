@@ -29,6 +29,12 @@ const makeTitle = title
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="generator" content={Astro.generator} />
+    <style>
+    body {
+    background: #DFF0EA;
+    color: #687980;
+    }
+    </style>
 
     <!-- <link rel="preload" as="image" href={src} alt="Hero" /> -->
     <SEO
@@ -53,7 +59,7 @@ const makeTitle = title
       }}
     />
   </head>
-  <body style="background: #DFF0EA;">
+  <body>
     <Navbar />
     <slot />
     <Footer />
