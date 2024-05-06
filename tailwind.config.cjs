@@ -9,6 +9,7 @@ module.exports = {
       },
       colors: {
         boxgrey: '#ECEFF1'
+        boxivory: '#FFFFF0'
       }
     },
   },
