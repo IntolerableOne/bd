@@ -8,8 +8,8 @@ module.exports = {
         sans: ["Inter Variable", "Inter", ...defaultTheme.fontFamily.sans],
       },
       colors: {
-        boxgrey: '#ECEFF1'
-        boxivory: '#FFFFF0'
+        boxgrey: '#ECEFF1',
+        boxivory: '#FFFFF0',
       }
     },
   },
