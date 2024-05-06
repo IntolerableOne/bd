@@ -4,51 +4,50 @@ import { Icon } from "astro-icon";
 
 const features = [
   {
-    title: "Bring Your Own Framework",
+    title: "Expert Guidance",
     description:
-      "Build your site using React, Svelte, Vue, Preact, web components, or just plain ol' HTML + JavaScript.",
-    icon: "bx:bxs-briefcase",
+      "Access to experienced healthcare professionals specializing in pregnancy and postnatal care.",
+    icon: "bx:bxs-spa",
   },
   {
-    title: "100% Static HTML, No JS",
+    title: "Flexible Scheduling",
     description:
-      "Astro renders your entire page to static HTML, removing all JavaScript from your final build by default.",
-    icon: "bx:bxs-window-alt",
+      "Book consultations at your convenience, with options for immediate support.",
+    icon: "bx:bxs-calendar-heart",
   },
   {
-    title: "On-Demand Components",
+    title: "Comprehensive Support",
     description:
-      "Need some JS? Astro can automatically hydrate interactive components when they become visible on the page.  ",
-    icon: "bx:bxs-data",
+      "Holistic care covering emotional, physical, and psychological needs.",
+    icon: "bx:bxs-like",
   },
   {
-    title: "Broad Integration",
+    title: "Privacy and Comfort",
     description:
-      "Astro supports TypeScript, Scoped CSS, CSS Modules, Sass, Tailwind, Markdown, MDX, and any other npm packages.",
-    icon: "bx:bxs-bot",
+      "Secure and private sessions from the comfort of your home.",
+    icon: "bx:bxs-donate-heart",
   },
   {
-    title: "SEO Enabled",
+    title: "Tailored Advice",
     description:
-      "Automatic sitemaps, RSS feeds, pagination and collections take the pain out of SEO and syndication. It just works!",
-    icon: "bx:bxs-file-find",
+      "Personalized recommendations to suit your specific circumstances and challenges.",
+    icon: "bx:bxs-comment-dots",
   },
   {
-    title: "Community",
+    title: "Continuous Care",
     description:
-      "Astro is an open source project powered by hundreds of contributors making thousands of individual contributions.",
-    icon: "bx:bxs-user",
+      "Ongoing support throughout your pregnancy and postnatal journey.",
+    icon: "bx:bxs-phone-call",
   },
 ];
 ---
 
 <div class="mt-16 md:mt-0">
   <h2 class="text-4xl lg:text-5xl font-bold lg:tracking-tight">
-    Everything you need to start a website
+    Compassionate Support for Families
   </h2>
   <p class="text-lg mt-4 text-slate-600">
-    Astro comes batteries included. It takes the best parts of state-of-the-art
-    tools and adds its own innovations.
+    Explore expert-led video consultations at Birth Debrief, your trusted partner through pregnancy challenges and postnatal care. Our specialized support helps families navigate pregnancy complications and postnatal trauma with professional advice and compassionate care
   </p>
 </div>
 
@@ -56,7 +55,7 @@ const features = [
   {
     features.map((item) => (
       <div class="flex gap-4 items-start">
-        <div class="mt-1 bg-black rounded-full  p-2 w-8 h-8 shrink-0">
+        <div class="mt-1 bg-emerald-400 rounded-full  p-2 w-8 h-8 shrink-0">
           <Icon class="text-white" name={item.icon} />
         </div>
         <div>
