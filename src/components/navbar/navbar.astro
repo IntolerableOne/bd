@@ -3,6 +3,7 @@ import Container from "@components/container.astro";
 import Link from "@components/ui/link.astro";
 import Dropdown from "./dropdown.astro";
 import { Astronav, MenuItems, MenuIcon } from "astro-navbar";
+import { Icon } from "astro-icon";
 
 const menuitems = [
   {
@@ -83,7 +84,7 @@ const menuitems = [
     </Astronav>
     <div>
       <div class="hidden lg:flex items-center gap-4">
-        <Link href="#" size="md">Book Appointment</Link>
+        <Link href="#" size="md"><Icon class="text-white w-5 h-5" name="bx:bxs-calendar-heart" /> Book Appointment</Link>
       </div>
     </div>
   </header>
