@@ -20,7 +20,7 @@ const { frontmatter } = Astro.props;
         <span>
           {frontmatter.author}
         </span>
-        <span>•</span>
+        <span>|</span>
         <time datetime={frontmatter.publishDate}>
           {getFormattedDate(frontmatter.publishDate)}
         </time>
