@@ -3,7 +3,7 @@ draft: false
 title: "Understanding the Emotional Journey of High-Risk Pregnancies"
 snippet: "Explore the emotional challenges of high-risk pregnancies and offer insights on managing stress and anxiety. Conclude with the benefits of seeking professional support through video consultations."
 image: {
-    src: "https://images.unsplash.com/photo-1593720213428-28a5b9e94613?&fit=crop&w=430&h=240",
+    src: "https://birthdebrief.com/rollercoaster.webp",
     alt: "High-Risk Pregnancies, Emotional Support"
 }
 publishDate: "2024-05-01 15:39"
