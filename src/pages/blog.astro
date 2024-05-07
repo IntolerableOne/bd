@@ -21,7 +21,7 @@ publishedBlogEntries.sort(function (a, b) {
     <Sectionhead>
       <Fragment slot="title">Our Blog</Fragment>
       <Fragment slot="desc">
-        We write about building startups and thoughts going on our mind.
+        Discover practical tips, emotional support, and professional insights into managing difficult pregnancies. Each post invites you to enhance your journey with personalized video consultations from our compassionate specialists.
       </Fragment>
     </Sectionhead>
     <main class="mt-16">
@@ -42,7 +42,7 @@ publishedBlogEntries.sort(function (a, b) {
                     class="w-full rounded-md object-cover object-center bg-white"
                   />
                   <div>
-                    <span class="text-blue-400 uppercase tracking-wider text-sm font-medium">
+                    <span class="text-green-700 uppercase tracking-wider text-sm font-medium">
                       {blogPostEntry.data.category}
                     </span>
 
@@ -51,12 +51,11 @@ publishedBlogEntries.sort(function (a, b) {
                     </h2>
 
                     <div class="flex gap-2 mt-3">
-                      <span class="text-gray-400">
+                      <span>
                         {blogPostEntry.data.author}
                       </span>
-                      <span class="text-gray-400">• </span>
+                      <span>• </span>
                       <time
-                        class="text-gray-400"
                         datetime={blogPostEntry.data.publishDate.toISOString()}>
                         {blogPostEntry.data.publishDate.toDateString()}
                       </time>
