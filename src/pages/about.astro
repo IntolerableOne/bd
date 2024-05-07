@@ -14,18 +14,33 @@ const publishedTeamMembers = await getCollection("team", ({ data }) => {
 <Layout title="About">
   <Container>
     <Sectionhead>
-      <Fragment slot="title">About</Fragment>
-      <Fragment slot="desc">We are a small passionate team.</Fragment>
+      <Fragment slot="title">Our Team</Fragment>
+      <Fragment slot="desc">We are a small passionate team dedicated to providing you with the support you need.</Fragment>
     </Sectionhead>
 
     <div class="flex flex-col gap-3 mx-auto max-w-4xl mt-16">
-      <h2 class="font-bold text-3xl text-gray-800">
-        Empowering the world with Astro.
+      <h2 class="font-bold text-3xl">
+        Meet Our Compassionate Specialists
       </h2>
-      <p class="text-lg leading-relaxed text-slate-500">
-        We're a multi-cultural team from around the world! We come from diverse
-        backgrounds, bringing different personalities, experiences and skills to
-        the job. This is what makes our team so special.
+      <p class="text-lg leading-relaxed">
+        Welcome to the heart of our organization—our dedicated team. With a remarkable combined experience of over 45 years as midwives in the NHS, our professionals bring not only their vast knowledge but also their deep passion for maternal and family health to our services.</p>
+      <h3 class="font-bold text-2xl">
+      Our Commitment to You
+      </h3>
+      <p class="text-lg leading-relaxed">
+Each team member holds a highly respected position within the NHS, reflecting their competence and dedication to the highest standards of care. Despite their busy roles, their commitment extends beyond the confines of the hospital. They are driven by a profound desire to support, educate, and empower mothers and families, not just locally, but everywhere.
+      </p>
+      <h3 class="font-bold text-2xl">
+      Why We Care
+      </h3>
+      <p class="text-lg leading-relaxed">
+Understanding the complexities of pregnancy and motherhood, our team offers a nurturing touch and expert guidance to ensure you and your family feel supported every step of the way. Whether you're navigating the challenges of pregnancy or seeking postpartum support, our team is here for you, equipped with empathy, expertise, and a genuine passion for making a difference.
+      </p>
+      <h3 class="font-bold text-2xl">
+      Reach Out for Support
+      </h3>
+      <p class="text-lg leading-relaxed">
+We believe in making professional, compassionate support accessible. If you're looking for advice, guidance, or someone who understands the challenges of motherhood, reach out. Our doors and hearts are open to you.
       </p>
     </div>
     <div class="grid md:grid-cols-3 gap-10 mx-auto max-w-4xl mt-12">
@@ -44,8 +59,8 @@ const publishedTeamMembers = await getCollection("team", ({ data }) => {
             </div>
 
             <div class="mt-4 text-center">
-              <h2 class="text-lg text-gray-800">{teamMemberEntry.data.name}</h2>
-              <h3 class="text-sm text-slate-500">
+              <h2 class="text-lg">{teamMemberEntry.data.name}</h2>
+              <h3 class="text-sm">
                 {teamMemberEntry.data.title}
               </h3>
             </div>
