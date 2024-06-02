@@ -37,14 +37,8 @@ Each team member holds a highly respected position within the NHS, reflecting th
       <p class="text-lg leading-relaxed mb-4">
 Understanding the complexities of pregnancy and motherhood, our team offers a nurturing touch and expert guidance to ensure you and your family feel supported every step of the way. Whether you're navigating the challenges of pregnancy or seeking postpartum support, our team is here for you, equipped with empathy, expertise, and a genuine passion for making a difference.
       </p>
-      <h3 class="font-bold text-2xl">
-      Reach Out for Support
-      </h3>
-      <p class="text-lg leading-relaxed">
-We believe in making professional, compassionate support accessible. If you're looking for advice, guidance, or someone who understands the challenges of motherhood, reach out. Our doors and hearts are open to you.
-      </p>
     </div>
-    <div class="grid md:grid-cols-3 gap-10 mx-auto max-w-4xl mt-12">
+    <div class="grid md:grid-cols-2 gap-10 mx-auto max-w-4xl mt-12">
       {
         publishedTeamMembers.map((teamMemberEntry) => (
           <div class="group">
@@ -55,15 +49,15 @@ We believe in making professional, compassionate support accessible. If you're l
                 sizes="(max-width: 800px) 100vw, 400px"
                 width={400}
                 height={400}
-                class="w-full rounded-md rounded transition group-hover:-translate-y-1 group-hover:shadow-xl bg-white object-cover object-center aspect-square"
+                class="w-full rounded-full transition group-hover:-translate-y-1 group-hover:shadow-xl bg-white object-cover object-center aspect-square"
               />
             </div>
 
             <div class="mt-4 text-center">
-              <h2 class="text-lg">{teamMemberEntry.data.name}</h2>
-              <h3 class="text-sm">
+              <h2 class="text-2xl m-4 font-bold">
                 {teamMemberEntry.data.title}
-              </h3>
+              </h2>
+                <p class="text-left">{teamMemberEntry.data.bio}</p>
             </div>
           </div>
         ))
