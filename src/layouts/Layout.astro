@@ -5,21 +5,21 @@ import Navbar from "@components/navbar/navbar.astro";
 import "@fontsource-variable/inter/index.css";
 
 export interface Props {
-  title: string;
+  title?: string;
+  description?: string;
 }
 
+const {
+  title,
+  description = "Expert Pregnancy & Postnatal Video Consultations | BirthDebrief.com"
+} = Astro.props;
+
 const canonicalURL = new URL(Astro.url.pathname, Astro.site).toString();
-
-const resolvedImageWithDomain = new URL(
-  "/opengraph.jpg",
-  Astro.site
-).toString();
-
-const { title } = Astro.props;
+const socialImage = new URL("/opengraph.jpg", Astro.site).toString();
 
 const makeTitle = title
-  ? title + " | " + "BirthDebrief.com"
-  : "Expert Pregnancy & Postnatal Video Consultations | BirthDebrief.com";
+  ? `${title} | BirthDebrief.com`
+  : description;
 ---
 
 <!DOCTYPE html>
@@ -30,10 +30,10 @@ const makeTitle = title
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="generator" content={Astro.generator} />
     <meta name="theme-color" content="#15803d" />
-    <!-- <link rel="preload" as="image" href={src} alt="Hero" /> -->
+    
     <SEO
       title={makeTitle}
-      description="Connect with expert consultants for personalized support during pregnancy and postnatal challenges. Book a video consultation today to navigate your journey with confidence"
+      description={description}
       canonical={canonicalURL}
       twitter={{
         creator: "@birthdebrief",
@@ -44,8 +44,8 @@ const makeTitle = title
         basic: {
           url: canonicalURL,
           type: "website",
-          title: `Expert Pregnancy & Postnatal Video Consultations | BirthDebrief.com`,
-          image: resolvedImageWithDomain,
+          title: makeTitle,
+          image: socialImage,
         },
         image: {
           alt: "Birthdebrief.com Homepage Screenshot",
