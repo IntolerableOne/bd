@@ -1,59 +1,43 @@
 ---
-export interface Props {
-  href?: string;
-  size?: "md" | "lg";
-  style?: "primary" | "outline";
-  block?: boolean;
-  class?: string;
-  [key: string]: any;
-}
-
 const { 
   href, 
-  block, 
-  size = "md", 
+  size = "lg", 
   style = "primary", 
+  block, 
   class: className, 
-  ...rest
+  ...rest 
 } = Astro.props;
 
-const sizes = {
-  md: "px-5 py-2.5",
-  lg: "px-6 py-3"
-};
-
-const styles = {
-  primary: "font-medium bg-green-700 text-white border-2 border-green-800 hover:border-green-900 hover:bg-green-800",
-  outline: "font-medium bg-white border-2 border-green-600 hover:border-green-900 hover:bg-green-100"
-};
-
-const baseStyles = "rounded-md transition focus:ring-2 focus:ring-offset-2 focus:ring-green-500";
+// Common classes for consistent styling
+const commonClasses = [
+  "rounded-md",
+  "text-center",
+  "transition",
+  "focus-visible:ring-2",
+  "ring-offset-2",
+  "ring-gray-200",
+  "focus:outline-none",
+  block && "w-full",
+  size === "lg" && "px-5 py-2.5",
+  style === "primary" && "bg-green-700 text-white hover:bg-green-800",
+  style === "outline" && "border-2 border-green-700 hover:bg-green-50",
+  className
+];
 ---
 
 {
   href ? (
     <a
       href={href}
-      {...rest}
-      class:list={[
-        baseStyles,
-        sizes[size],
-        styles[style],
-        block && "w-full text-center",
-        className
-      ]}>
+      class:list={commonClasses}
+      {...rest}>
       <slot />
     </a>
   ) : (
     <button
-      {...rest}
-      class:list={[
-        baseStyles,
-        sizes[size],
-        styles[style],
-        block && "w-full",
-        className
-      ]}>
+      type="button"
+      class:list={commonClasses}
+      {...rest}>
       <slot />
     </button>
   )
