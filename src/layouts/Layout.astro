@@ -12,14 +12,14 @@ export interface Props {
 
 const {
   title,
-  description = "Expert Pregnancy & Postnatal Video Consultations | BirthDebrief.com"
+  description = "Pregnancy & Postnatal Video Consultations | birthdebrief.com"
 } = Astro.props;
 
 const canonicalURL = new URL(Astro.url.pathname, Astro.site).toString();
 const socialImage = new URL("/opengraph.jpg", Astro.site).toString();
 
 const makeTitle = title
-  ? `${title} | BirthDebrief.com`
+  ? `${title} | birthdebrief.com`
   : description;
 ---
 
