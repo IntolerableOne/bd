@@ -1,0 +1,50 @@
+---
+import Contactform from "@components/contactform.astro";
+import Container from "@components/container.astro";
+import Sectionhead from "@components/sectionhead.astro";
+import Layout from "@layouts/Layout.astro";
+---
+
+<Layout title="Contact">
+  <Container>
+    <Sectionhead>
+      <Fragment slot="title">Contact</Fragment>
+      <Fragment slot="desc">
+        <div class="text-left"> <!-- Add text-left class to override center alignment -->
+          <p class="mb-4">
+            If you have an issue booking an appointment or have found something wrong with the website, 
+            please let us know using the form below.
+          </p>
+        </Fragment>
+      </Sectionhead>
+      
+          <div class="mt-6 mb-12 text-left">
+            <p class="mb-4">
+              If you require immediate assistance due to your mental wellbeing, 
+              the numbers below can provide immediate support:
+            </p>
+      
+            <div class="space-y-4">
+              <div>
+                <h3 class="font-semibold">NHS: <a href="tel:111" class="text-green-800 underline">111</a></h3>
+                <p>Contact this number to access urgent mental health support, including connecting with a crisis team.</p>
+              </div>
+      
+              <div>
+                <h3 class="font-semibold">Samaritans: <a href="tel:116123" class="text-green-800 underline">116 123</a></h3>
+                <p>A national charity offering 24/7 confidential support for anyone experiencing distress or suicidal thoughts.</p>
+              </div>
+      
+              <div>
+                <h3 class="font-semibold">Shout: <a href="sms:85258" class="text-green-800 underline">85258</a></h3>
+                <p>A text line for immediate crisis support if you prefer not to talk on the phone.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+    <div>
+      <Contactform />
+    </div>
+  </Container>
+</Layout>

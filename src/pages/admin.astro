@@ -1,0 +1,13 @@
+---
+import Layout from "@layouts/Layout.astro";
+import Container from "@components/container.astro";
+import AdminPanel from "../components/admin/AdminPanel.svelte";
+---
+
+<Layout title="Admin Panel - Availability Management">
+  <Container>
+    <div class="py-8">
+      <AdminPanel client:load />
+    </div>
+  </Container>
+</Layout>

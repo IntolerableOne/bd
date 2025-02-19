@@ -1,0 +1,47 @@
+---
+// @ts-ignore
+import { Icon } from "astro-icon";
+
+const features = [
+
+  {
+    title: "Flexible Scheduling",
+    description:
+      "Book consultations at your convenience, with options for immediate support.",
+    icon: "bx:bxs-calendar-heart",
+  },
+  {
+    title: "Privacy and Comfort",
+    description:
+      "Private and confidential support from the comfort of your own home.",
+    icon: "bx:bxs-donate-heart",
+  },
+  {
+    title: "Tailored Advice",
+    description:
+      "Personalised recommendations to suit your specific circumstances and challenges.",
+    icon: "bx:bxs-comment-dots",
+  },
+];
+---
+
+<div class="mt-16 md:mt-0">
+  <h2 class="text-4xl lg:text-5xl font-bold tracking-tighter">
+    Compassionate Support
+  </h2>
+  <p class="text-lg mt-4">
+    In each session, we create a safe space for you to explore your experiences holistically, reflecting on their impact on your emotional, psychological, and physical wellbeing. We validate your experiences by listening without judgment and acknowledging uncomfortable feelings.<br /><br />Our goal is to help you regain control, positively reframe, and process your experiences.<div class="grid sm:grid-cols-2 md:grid-cols-3 mt-16 gap-16">
+  {
+    features.map((item) => (
+      <div class="flex gap-4 items-start">
+        <div class="mt-1 bg-green-700 rounded-full  p-2 w-8 h-8 shrink-0">
+          <Icon class="text-white" name={item.icon} />
+        </div>
+        <div>
+          <h3 class="font-semibold text-lg">{item.title}</h3>{" "}
+          <p class="mt-2 leading-relaxed">{item.description}</p>
+        </div>
+      </div>
+    ))
+  }
+</div>
