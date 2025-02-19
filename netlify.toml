@@ -17,5 +17,5 @@
 # Environment Variables
 [build.environment]
   NODE_VERSION = "18"
-  NPM_FLAGS = "--force"
+  NPM_FLAGS="--legacy-peer-deps"
   PRISMA_GENERATE = "true"
