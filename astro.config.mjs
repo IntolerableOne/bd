@@ -5,11 +5,11 @@ import sitemap from "@astrojs/sitemap";
 import svelte from "@astrojs/svelte";
 import node from '@astrojs/node';
 
+import netlify from "@astrojs/netlify";
+
 export default defineConfig({
   output: 'server',
-  adapter: node({
-    mode: 'standalone'
-  }),
+  adapter: netlify(),
   site: "https://birthdebrief.com",
   integrations: [
     tailwind(), 
