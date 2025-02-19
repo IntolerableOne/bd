@@ -41,5 +41,8 @@
     "@types/stripe": "^8.0.416",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.6.1"
   }
 }
