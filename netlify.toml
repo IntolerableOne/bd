@@ -19,10 +19,3 @@
   NODE_VERSION = "18"
   NPM_FLAGS = "--force"
   PRISMA_GENERATE = "true"
-
-# Caching Optimization (Optional, speeds up builds)
-[[plugins]]
-  package = "@netlify/plugin-cache"
-
-  [plugins.inputs]
-    paths = [".next/cache", "node_modules/.cache", ".astro/cache"]
