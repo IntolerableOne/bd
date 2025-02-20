@@ -3,36 +3,29 @@ import { prisma } from '../../../../lib/prisma';
 
 export const GET: APIRoute = async ({ params }) => {
   try {
-    const availability = await prisma.availability.findUnique({
+    const booking = await prisma.booking.findUnique({
       where: { id: params.id },
-      include: { booking: true }
+      include: {
+        availability: true
+      }
     });
 
-    if (!availability) {
+    if (!booking) {
       return new Response(JSON.stringify({ 
         confirmed: false,
-        message: 'Slot not found'
-      }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      });
+        message: 'Booking not found'
+      }), { status: 404 });
     }
 
     return new Response(JSON.stringify({ 
-      confirmed: availability.booking?.paid === true,
-      message: availability.booking?.paid ? 'Booking confirmed' : 'No confirmed booking found'
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+      confirmed: booking.paid,
+      bookingDetails: booking
+    }), { status: 200 });
   } catch (error) {
-    console.error('Error checking booking status:', error);
+    console.error('Error checking booking:', error);
     return new Response(JSON.stringify({ 
       confirmed: false,
       message: 'Error checking booking status'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    }), { status: 500 });
   }
 };
