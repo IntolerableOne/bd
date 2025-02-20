@@ -8,7 +8,9 @@ import netlify from "@astrojs/netlify";
 
 export default defineConfig({
   output: 'server',
-  adapter: netlify(),
+  adapter: netlify({
+    edgeMiddleware: true 
+  }),
   site: "https://birthdebrief.com",
   integrations: [
     tailwind(), 
