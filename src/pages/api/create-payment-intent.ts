@@ -7,10 +7,21 @@ const stripe = new Stripe(import.meta.env.STRIPE_SECRET_KEY);
 
 export const POST: APIRoute = async ({ request }) => {
   try {
+    console.log('Starting payment intent creation...');
+    
+    // Log environment variables (remove sensitive parts)
+    console.log('Environment check:', {
+      hasStripeKey: !!import.meta.env.STRIPE_SECRET_KEY,
+      hasDbUrl: !!import.meta.env.DATABASE_URL,
+      nodeEnv: process.env.NODE_ENV
+    });
+
     const { slotId, name, email, phone } = await request.json();
+    console.log('Received data:', { slotId, name, email, phone });
 
     // Validate input
     if (!slotId || !name || !email || !phone) {
+      console.log('Missing required fields:', { slotId, name, email, phone });
       return new Response(
         JSON.stringify({ error: 'Missing required fields' }),
         { 
@@ -20,6 +31,7 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
+    console.log('Checking availability...');
     // Check if slot exists and is available
     const availability = await prisma.availability.findUnique({
       where: { id: slotId },
@@ -27,6 +39,7 @@ export const POST: APIRoute = async ({ request }) => {
     });
 
     if (!availability) {
+      console.log('Slot not found:', slotId);
       return new Response(
         JSON.stringify({ error: 'Time slot not found' }),
         { 
@@ -37,6 +50,7 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     if (availability.booking) {
+      console.log('Slot already booked:', slotId);
       return new Response(
         JSON.stringify({ error: 'Time slot already booked' }),
         { 
@@ -46,9 +60,11 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
+    console.log('Creating hold...');
     // Create hold
     await createHold(slotId);
 
+    console.log('Creating booking record...');
     // Create booking record
     const booking = await prisma.booking.create({
       data: {
@@ -56,12 +72,13 @@ export const POST: APIRoute = async ({ request }) => {
         email,
         phone,
         availabilityId: slotId,
-        amount: 10000, // £100 in pence
+        amount: 10000,
         paid: false
       }
     });
 
-    // Create simple payment intent
+    console.log('Creating Stripe payment intent...');
+    // Create payment intent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: 10000,
       currency: 'gbp',
@@ -73,6 +90,7 @@ export const POST: APIRoute = async ({ request }) => {
       }
     });
 
+    console.log('Payment intent created successfully');
     return new Response(
       JSON.stringify({ 
         clientSecret: paymentIntent.client_secret,
@@ -85,6 +103,21 @@ export const POST: APIRoute = async ({ request }) => {
     );
   } catch (error) {
     console.error('Payment intent error:', error);
+    // Log full error details in development
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Full error:', error);
+    }
+    
+    // If it's a Stripe error, get more details
+    if (error instanceof Stripe.errors.StripeError) {
+      console.error('Stripe error details:', {
+        type: error.type,
+        code: error.code,
+        decline_code: error.decline_code,
+        message: error.message
+      });
+    }
+
     return new Response(
       JSON.stringify({ 
         error: 'Failed to create payment intent',
