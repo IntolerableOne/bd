@@ -1,29 +1,23 @@
+<!-- src/components/booking/Calendar.svelte -->
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   
   export let selectedSlot = null;
+  export let isLoading = true;
+
   let currentDate = new Date();
   let isMobile = false;
   let availableSlots = [];
-  let loading = false;
+  let loading = false;  // Changed to false initially
   let error = null;
   let initialized = false;
-
-  const timeSlots = [
-    { start: '09:00', end: '10:00' },
-    { start: '10:00', end: '11:00' },
-    { start: '11:00', end: '12:00' },
-    { start: '13:00', end: '14:00' },
-    { start: '14:00', end: '15:00' },
-    { start: '15:00', end: '16:00' },
-    { start: '16:00', end: '17:00' }
-  ];
+  let weekDays = [];
 
   function getWeekDays(startDate) {
     const days = [];
     const currentDay = new Date(startDate);
-    currentDay.setDate(currentDay.getDate() - currentDay.getDay());
-    currentDay.setHours(0, 0, 0, 0);
+    currentDay.setDate(currentDay.getDate() - currentDay.getDay()); // Start from Sunday
+    currentDay.setHours(0, 0, 0, 0); // Reset time
     
     for (let i = 0; i < 7; i++) {
       const day = new Date(currentDay);
@@ -33,71 +27,79 @@
     return days;
   }
 
-  function isSlotAvailable(day, timeSlot) {
-    // Create a date object for this slot
-    const slotDateTime = new Date(day);
-    const [hours, minutes] = timeSlot.start.split(':');
-    slotDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-
-    // Get current time plus 2 hours
-    const minDateTime = new Date(Date.now() + (2 * 60 * 60 * 1000));
-
-    // If slot is in the past or within next 2 hours, it's not available
-    if (slotDateTime <= minDateTime) {
-      return null;
-    }
-
-    return availableSlots.find(slot => {
+  function getDaySlotsForDate(day) {
+    return availableSlots.filter(slot => {
       const slotDate = new Date(slot.date);
-      return slotDate.toDateString() === day.toDateString() && 
-             slot.startTime === timeSlot.start;
+      return slotDate.getFullYear() === day.getFullYear() &&
+             slotDate.getMonth() === day.getMonth() &&
+             slotDate.getDate() === day.getDate();
     });
   }
 
   async function loadAvailability() {
-    if (loading) return;
-    
+    // Remove the early return on loading
     loading = true;
+    isLoading = true;
     error = null;
     availableSlots = [];
+
+    console.log('Loading availability...'); // Debug log
     
     try {
-      const weekDays = getWeekDays(currentDate);
+      weekDays = getWeekDays(currentDate);
       const startDate = weekDays[0];
       const endDate = weekDays[6];
 
+      // Set the time to midnight for consistent date handling
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      
+      const formattedStartDate = startDate.toISOString();
+      const formattedEndDate = endDate.toISOString();
+
       const response = await fetch(
-        `/api/available-slots?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
+        `/api/available-slots?startDate=${formattedStartDate}&endDate=${formattedEndDate}`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          }
+        }
       );
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('API Response:', data);
-
+      console.log('Received data:', data); // Debug log
+      
       if (!Array.isArray(data)) {
-        throw new Error('Invalid data format received');
+        throw new Error('Invalid data format received from server');
       }
-
-      availableSlots = data;
+      
+      // Parse dates in the response
+      availableSlots = data.map(slot => ({
+        ...slot,
+        date: new Date(slot.date)
+      }));
+      
       initialized = true;
+      await tick();
+      
     } catch (e) {
       console.error('Error loading slots:', e);
       error = 'Failed to load available slots. Please try again.';
       availableSlots = [];
     } finally {
       loading = false;
+      isLoading = false;
     }
   }
 
   function handleSlotSelection(slot) {
     selectedSlot = selectedSlot?.id === slot.id ? null : slot;
-  }
-
-  function handleResize() {
-    isMobile = window.innerWidth < 768;
   }
 
   function previousWeek() {
@@ -114,34 +116,48 @@
     loadAvailability();
   }
 
-  $: weekDays = getWeekDays(currentDate);
-  $: {
-    if (initialized && availableSlots.length > 0) {
-      console.log('Current state:', {
-        currentDate: currentDate.toISOString(),
-        weekDays: weekDays.map(d => d.toISOString()),
-        availableSlots: availableSlots.map(s => ({
-          date: s.date,
-          startTime: s.startTime
-        }))
-      });
-    }
+  function handleResize() {
+    isMobile = window.innerWidth < 768;
   }
 
   onMount(async () => {
     handleResize();
     window.addEventListener('resize', handleResize);
     await loadAvailability();
-    return () => window.removeEventListener('resize', handleResize);
+    
+    // Set up periodic refresh of availability
+    const refreshInterval = setInterval(loadAvailability, 30000); // Refresh every 30 seconds
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearInterval(refreshInterval);
+    };
   });
+
+  $: weekDays = getWeekDays(currentDate);
 </script>
+
+<!-- Error Message -->
+{#if error}
+  <div class="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-4">
+    {error}
+    <button 
+      class="underline ml-2"
+      on:click={() => {
+        error = null;
+        loadAvailability();
+      }}>
+      Try again
+    </button>
+  </div>
+{/if}
 
 <!-- Mobile View -->
 <div class="block md:hidden">
   <div class="flex justify-between items-center mb-4">
     <button 
       on:click={previousWeek}
-      class="p-2 rounded-lg hover:bg-green-100">
+      class="p-2 rounded-lg bg-green-200 hover:bg-green-100">
       Previous Week
     </button>
     <h3 class="text-lg font-semibold">
@@ -150,7 +166,7 @@
     </h3>
     <button 
       on:click={nextWeek}
-      class="p-2 rounded-lg hover:bg-green-100">
+      class="p-2 rounded-lg bg-green-200 hover:bg-green-100">
       Next Week
     </button>
   </div>
@@ -162,28 +178,22 @@
   {:else}
     <div class="space-y-4">
       {#each weekDays as day}
-        {@const daySlots = availableSlots.filter(slot => {
-          const slotDate = new Date(slot.date);
-          return slotDate.toDateString() === day.toDateString();
-        })}
+        {@const daySlots = getDaySlotsForDate(day)}
         {#if daySlots.length > 0}
           <div class="border rounded-lg p-4 bg-white">
             <h4 class="font-semibold mb-3">
               {day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
             </h4>
             <div class="space-y-2">
-              {#each timeSlots as timeSlot}
-                {@const slot = isSlotAvailable(day, timeSlot)}
-                {#if slot}
-                  <button
-                    class="w-full p-3 text-left rounded-lg transition-colors
-                      {selectedSlot?.id === slot.id ? 
-                        'bg-green-700 text-white' : 
-                        'bg-green-50 hover:bg-green-100 border border-green-200'}"
-                    on:click={() => handleSlotSelection(slot)}>
-                    <div class="text-sm font-medium">{timeSlot.start}</div>
-                  </button>
-                {/if}
+              {#each daySlots as slot}
+                <button
+                  class="w-full p-3 text-left rounded-lg transition-colors
+                    {selectedSlot?.id === slot.id ? 
+                      'bg-green-700 text-white' : 
+                      'bg-green-50 hover:bg-green-100 border border-green-200'}"
+                  on:click={() => handleSlotSelection(slot)}>
+                  <div class="text-sm font-medium">{slot.startTime}</div>
+                </button>
               {/each}
             </div>
           </div>
@@ -198,7 +208,7 @@
   <div class="flex justify-between items-center mb-4">
     <button 
       on:click={previousWeek}
-      class="p-2 rounded-lg hover:bg-green-100">
+      class="p-2 rounded-lg bg-green-200 hover:bg-green-100">
       Previous Week
     </button>
     <h3 class="text-lg font-semibold">
@@ -207,7 +217,7 @@
     </h3>
     <button 
       on:click={nextWeek}
-      class="p-2 rounded-lg hover:bg-green-100">
+      class="p-2 rounded-lg bg-green-200 hover:bg-green-100">
       Next Week
     </button>
   </div>
@@ -223,23 +233,21 @@
       {/each}
 
       {#each weekDays as day}
+        {@const daySlots = getDaySlotsForDate(day)}
         <div class="border rounded-lg p-4 bg-white min-h-[150px]">
           <h4 class="font-semibold mb-3 text-center">
             {day.getDate()}
           </h4>
           <div class="space-y-2">
-            {#each timeSlots as timeSlot}
-              {@const slot = isSlotAvailable(day, timeSlot)}
-              {#if slot}
-                <button
-                  class="w-full p-2 text-left rounded-lg text-sm transition-colors
-                    {selectedSlot?.id === slot.id ? 
-                      'bg-green-700 text-white' : 
-                      'bg-green-50 hover:bg-green-100 border border-green-200'}"
-                  on:click={() => handleSlotSelection(slot)}>
-                  <div class="text-sm font-medium">{timeSlot.start}</div>
-                </button>
-              {/if}
+            {#each daySlots as slot}
+              <button
+                class="w-full p-2 text-left rounded-lg text-sm transition-colors
+                  {selectedSlot?.id === slot.id ? 
+                    'bg-green-700 text-white' : 
+                    'bg-green-50 hover:bg-green-100 border border-green-200'}"
+                on:click={() => handleSlotSelection(slot)}>
+                <div class="text-sm font-medium">{slot.startTime}</div>
+              </button>
             {/each}
           </div>
         </div>
@@ -247,3 +255,9 @@
     </div>
   {/if}
 </div>
+
+{#if !loading && !error && availableSlots.length === 0}
+  <div class="text-center py-8 text-gray-600">
+    No available slots for this week. Please try another week.
+  </div>
+{/if}

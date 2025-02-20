@@ -1,3 +1,4 @@
+<!-- src/components/booking/BookingPanel.svelte -->
 <script>
   import Calendar from './Calendar.svelte';
   import PaymentForm from './PaymentForm.svelte';
@@ -10,10 +11,20 @@
     phone: ''
   };
   let bookingComplete = false;
+  let calendarLoading = true;
 
   function nextStep() {
+    if (currentStep === 1 && (!userInfo.name || !userInfo.email || !userInfo.phone)) {
+      alert('Please fill in all required fields');
+      return;
+    }
     if (currentStep === 2 && !selectedSlot) {
       alert('Please select an appointment slot before continuing');
+      return;
+    }
+    // Don't allow proceeding if calendar is still loading
+    if (currentStep === 2 && calendarLoading) {
+      alert('Please wait for available slots to load');
       return;
     }
     if (currentStep < 3) {
@@ -30,6 +41,11 @@
   function handlePaymentComplete() {
     bookingComplete = true;
   }
+
+  $: canContinue = currentStep === 1 ? 
+    (userInfo.name && userInfo.email && userInfo.phone) : 
+    currentStep === 2 ? 
+    (selectedSlot && !calendarLoading) : true;
 </script>
 
 <div class="mx-auto">
@@ -101,12 +117,16 @@
         </div>
       </div>
     {:else if currentStep === 2}
-      <Calendar bind:selectedSlot />
+      <Calendar 
+        bind:selectedSlot 
+        bind:isLoading={calendarLoading}
+      />
     {:else}
       <PaymentForm
         slot={selectedSlot}
         {userInfo}
         onPaymentComplete={handlePaymentComplete}
+        onPaymentCancelled={() => currentStep = 2}
       />
     {/if}
 
@@ -124,9 +144,13 @@
 
       {#if currentStep < 3}
         <button
-          class="px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800"
-          on:click={nextStep}>
+          class="px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
+          on:click={nextStep}
+          disabled={!canContinue}>
           Continue
+          {#if currentStep === 2 && calendarLoading}
+            (Loading...)
+          {/if}
         </button>
       {/if}
     </div>

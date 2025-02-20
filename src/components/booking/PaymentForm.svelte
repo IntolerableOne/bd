@@ -1,18 +1,21 @@
-<!-- PaymentForm.svelte -->
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { loadStripe } from '@stripe/stripe-js';
 
+  export let onPaymentComplete;
   export let slot;
   export let userInfo;
-  export let onPaymentComplete;
+  // Default no-op function for cancel
+  export let onPaymentCancelled = () => {
+    window.history.back();
+  };
 
   let stripe;
   let elements;
   let paymentError = '';
   let processing = false;
-  let paymentProcessed = false;
-  let status = 'initial'; // initial, checking, processing, success, error
+  let holdCreated = false;
+  let holdCheckInterval;
 
   onMount(async () => {
     stripe = await loadStripe(import.meta.env.PUBLIC_STRIPE_KEY);
@@ -20,12 +23,11 @@
     try {
       // First check if slot is still available
       const availabilityCheck = await fetch(`/api/available-slots/check/${slot.id}`);
-      const availabilityData = await availabilityCheck.json();
-
-      if (!availabilityCheck.ok || !availabilityData.available) {
+      if (!availabilityCheck.ok) {
         throw new Error('This slot is no longer available');
       }
 
+      // Create payment intent which also creates a hold
       const response = await fetch('/api/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,6 +45,7 @@
       }
       
       const { clientSecret } = await response.json();
+      holdCreated = true;
       
       // Create Elements instance
       elements = stripe.elements();
@@ -69,12 +72,34 @@
 
       // Store client secret for payment
       elements.clientSecret = clientSecret;
+
+      // Start checking hold status
+      startHoldCheck();
     } catch (error) {
       console.error('Error initializing payment:', error);
       paymentError = error.message || 'Failed to initialize payment. Please try again.';
-      status = 'error';
+      onPaymentCancelled();
     }
   });
+
+  function startHoldCheck() {
+    // Check hold status every 30 seconds
+    holdCheckInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/available-slots/check/${slot.id}`);
+        const data = await response.json();
+        
+        if (!data.available && !data.held) {
+          // Slot was taken by someone else
+          clearInterval(holdCheckInterval);
+          paymentError = 'This slot is no longer available';
+          onPaymentCancelled();
+        }
+      } catch (error) {
+        console.error('Error checking hold status:', error);
+      }
+    }, 30000); // 30 seconds
+  }
 
   function getElementStyle() {
     return {
@@ -102,52 +127,14 @@
     }
   }
 
-  async function pollForConfirmation(slotId) {
-    let attempts = 0;
-    const maxAttempts = 10;
-    
-    return new Promise((resolve, reject) => {
-      const pollInterval = setInterval(async () => {
-        attempts++;
-        
-        try {
-          const bookingCheck = await fetch(`/api/booking/check/${slotId}`);
-          const bookingStatus = await bookingCheck.json();
-          
-          if (bookingStatus.confirmed) {
-            clearInterval(pollInterval);
-            resolve(true);
-          } else if (attempts >= maxAttempts) {
-            clearInterval(pollInterval);
-            reject(new Error('Booking confirmation timed out'));
-          }
-        } catch (error) {
-          clearInterval(pollInterval);
-          reject(error);
-        }
-      }, 1000);
-    });
-  }
-
   async function handleSubmit(event) {
     event.preventDefault();
     if (!stripe || !elements || processing) return;
 
-    status = 'checking';
     processing = true;
     paymentError = '';
 
     try {
-      // Check slot availability again before processing payment
-      const availabilityCheck = await fetch(`/api/available-slots/check/${slot.id}`);
-      const availabilityData = await availabilityCheck.json();
-
-      if (!availabilityCheck.ok || !availabilityData.available) {
-        throw new Error('This slot is no longer available');
-      }
-
-      status = 'processing';
-
       const { error: submitError } = await stripe.confirmCardPayment(
         elements.clientSecret,
         {
@@ -165,26 +152,28 @@
         throw new Error(submitError.message);
       }
 
-      // Payment successful - wait for booking confirmation
-      paymentProcessed = true;
-      
-      try {
-        await pollForConfirmation(slot.id);
-        status = 'success';
-        onPaymentComplete();
-      } catch (error) {
-        throw new Error('Payment processed but booking confirmation failed. Our team will contact you shortly.');
-      }
+      onPaymentComplete();
     } catch (error) {
       console.error('Payment error:', error);
       paymentError = error.message;
-      status = 'error';
     } finally {
       processing = false;
     }
   }
 
+  async function handleCancel() {
+    if (holdCreated) {
+      try {
+        await fetch(`/api/holds/${slot.id}`, { method: 'DELETE' });
+      } catch (error) {
+        console.error('Error releasing hold:', error);
+      }
+    }
+    onPaymentCancelled();
+  }
+
   onDestroy(() => {
+    // Clean up elements and intervals
     if (elements) {
       ['cardNumber', 'cardExpiry', 'cardCvc'].forEach(elementType => {
         const element = elements.getElement(elementType);
@@ -192,6 +181,15 @@
           element.destroy();
         }
       });
+    }
+    
+    if (holdCheckInterval) {
+      clearInterval(holdCheckInterval);
+    }
+
+    // Release hold if payment wasn't completed
+    if (holdCreated && !processing) {
+      handleCancel();
     }
   });
 </script>
@@ -218,10 +216,10 @@
         <div>
           <div class="text-sm font-medium">Amount: £100.00</div>
           <div class="text-sm text-gray-600">
-            One hour video consultation
+            One hour consultation with {slot.midwife}
           </div>
         </div>
-        {#if status === 'processing'}
+        {#if processing}
           <div class="text-sm text-yellow-600 flex items-center">
             <span class="inline-block animate-spin mr-2">⏳</span>
             Processing...
@@ -261,20 +259,22 @@
       {/if}
     </div>
 
-    <button
-      type="submit"
-      disabled={processing || status === 'success'}
-      class="w-full py-3 px-4 bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50 disabled:cursor-not-allowed">
-      {#if status === 'processing'}
-        Processing payment...
-      {:else if status === 'checking'}
-        Checking availability...
-      {:else if status === 'success'}
-        Payment Complete
-      {:else}
-        Pay £100.00
-      {/if}
-    </button>
+    <div class="flex space-x-4">
+      <button
+        type="button"
+        on:click={handleCancel}
+        disabled={processing}
+        class="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+        Cancel
+      </button>
+
+      <button
+        type="submit"
+        disabled={processing}
+        class="flex-1 py-3 px-4 bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50 disabled:cursor-not-allowed">
+        {processing ? 'Processing...' : 'Pay £100.00'}
+      </button>
+    </div>
 
     <div class="text-center text-sm text-gray-500 mt-4">
       <p>Secure payment processing by Stripe.</p>

@@ -13,34 +13,37 @@ export async function GET({ url }: APIContext) {
       });
     }
 
-    const startDateTime = new Date(startDate);
-    const endDateTime = new Date(endDate);
+    // Get current time plus 2 hours
+    const minDateTime = new Date(Date.now() + (2 * 60 * 60 * 1000));
+    minDateTime.setMinutes(0, 0, 0); // Round to nearest hour
 
-    if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+    // Parse the dates and ensure they're valid
+    const parsedStartDate = new Date(startDate);
+    const parsedEndDate = new Date(endDate);
+
+    if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
       return new Response(JSON.stringify({ error: 'Invalid date format' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    // Get current time plus 2 hours
-    const minDateTime = new Date(Date.now() + (2 * 60 * 60 * 1000));
-    minDateTime.setMinutes(0, 0, 0); // Round to nearest hour
-
     const slots = await prisma.availability.findMany({
       where: {
-        date: {
-          gte: startDateTime,
-          lte: endDateTime
-        },
         AND: [
+          {
+            date: {
+              gte: parsedStartDate,
+              lte: parsedEndDate
+            }
+          },
           {
             date: {
               gte: minDateTime
             }
           },
           {
-            booking: null // Only return slots that aren't booked
+            booking: null
           }
         ]
       },
@@ -51,7 +54,10 @@ export async function GET({ url }: APIContext) {
 
     return new Response(JSON.stringify(slots), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
     });
   } catch (error) {
     console.error('Error fetching available slots:', error);

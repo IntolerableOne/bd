@@ -1,59 +1,11 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
+// prisma/schema.prisma
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  password      String
-  role          String    @default("admin")
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
+generator client {
+  provider = "prisma-client-js"
 }
 
 model Availability {
@@ -62,20 +14,38 @@ model Availability {
   startTime String
   endTime   String
   midwife   String
+  booking   Booking?
+  hold      Hold?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  booking   Booking?
 }
 
 model Booking {
   id             String       @id @default(cuid())
   name           String
   email          String
-  phone          String
-  availabilityId String       @unique
-  availability   Availability @relation(fields: [availabilityId], references: [id])
+  phone          String?
+  amount         Int
   paid           Boolean      @default(false)
-  amount         Float
+  availability   Availability @relation(fields: [availabilityId], references: [id])
+  availabilityId String       @unique
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+}
+
+model Hold {
+  id             String       @id @default(cuid())
+  availability   Availability @relation(fields: [availabilityId], references: [id])
+  availabilityId String       @unique
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
