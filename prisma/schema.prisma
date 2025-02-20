@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -8,6 +7,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model User {
+  id       String @id @default(cuid())
+  email    String @unique
+  password String
+  role     String @default("admin")
+}
+
 model Availability {
   id        String   @id @default(cuid())
   date      DateTime
@@ -15,7 +21,7 @@ model Availability {
   endTime   String
   midwife   String
   booking   Booking?
-  hold      Hold?
+  hold      Hold?    // One-to-one relationship with Hold
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -24,28 +30,24 @@ model Booking {
   id             String       @id @default(cuid())
   name           String
   email          String
-  phone          String?
+  phone          String
   amount         Int
   paid           Boolean      @default(false)
   availability   Availability @relation(fields: [availabilityId], references: [id])
   availabilityId String       @unique
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+
+  @@index([email])
 }
 
 model Hold {
   id             String       @id @default(cuid())
   availability   Availability @relation(fields: [availabilityId], references: [id])
-  availabilityId String       @unique
-  createdAt      DateTime     @default(now())
+  availabilityId String       @unique  // One-to-one relationship with Availability
   expiresAt      DateTime
-}
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  role      String   @default("admin")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  @@index([availabilityId])
 }

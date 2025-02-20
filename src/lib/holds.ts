@@ -11,10 +11,7 @@ export async function createHold(availabilityId: string) {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
   try {
-    // First cleanup any expired holds
-    await cleanupExpiredHolds();
-
-    // Check if slot is actually available
+    // Check if slot is actually available first
     const availability = await prisma.availability.findUnique({
       where: { id: availabilityId },
       include: { 
@@ -31,6 +28,7 @@ export async function createHold(availabilityId: string) {
       throw new HoldError('Slot is already booked', 'ALREADY_BOOKED');
     }
 
+    // If there's an existing hold, check if it's expired
     if (availability.hold) {
       if (availability.hold.expiresAt > new Date()) {
         throw new HoldError('Slot is currently held', 'CURRENTLY_HELD');
@@ -54,7 +52,7 @@ export async function createHold(availabilityId: string) {
     if (error instanceof HoldError) {
       throw error;
     }
-    console.error('Error creating hold:', error);
+    console.error('Error in createHold:', error);
     throw new HoldError('Failed to create hold', 'INTERNAL_ERROR');
   }
 }
@@ -86,7 +84,8 @@ export async function cleanupExpiredHolds() {
     return result.count;
   } catch (error) {
     console.error('Error cleaning up expired holds:', error);
-    throw new HoldError('Failed to cleanup expired holds', 'INTERNAL_ERROR');
+    // Don't throw here, just log the error and continue
+    return 0;
   }
 }
 
@@ -117,13 +116,4 @@ export async function isSlotAvailable(availabilityId: string): Promise<boolean> 
     console.error('Error checking slot availability:', error);
     throw new HoldError('Failed to check slot availability', 'INTERNAL_ERROR');
   }
-}
-
-// Types for TypeScript
-export interface Hold {
-  id: string;
-  availabilityId: string;
-  expiresAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
 }
