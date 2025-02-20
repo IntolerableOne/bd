@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte'; // Import onDestroy here
   import { loadStripe } from '@stripe/stripe-js';
 
   export let slot;
