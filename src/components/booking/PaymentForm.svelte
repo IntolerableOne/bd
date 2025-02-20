@@ -15,17 +15,24 @@
   let processing = false;
   let clientSecret = '';
   let bookingId = '';
+  let initialized = false;
   
   onMount(async () => {
     try {
       stripe = await loadStripe(import.meta.env.PUBLIC_STRIPE_KEY);
+      if (!stripe) {
+        throw new Error('Failed to initialize Stripe');
+      }
       
+      console.log('Checking slot availability...');
       // First check if slot is still available
       const availabilityCheck = await fetch(`/api/available-slots/check/${slot.id}`);
       if (!availabilityCheck.ok) {
-        throw new Error('This slot is no longer available');
+        const error = await availabilityCheck.json();
+        throw new Error(error.error || 'This slot is no longer available');
       }
   
+      console.log('Creating payment intent...');
       // Create payment intent
       const response = await fetch('/api/create-payment-intent', {
         method: 'POST',
@@ -40,9 +47,10 @@
   
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || error.error || 'Failed to initialize payment');
+        throw new Error(error.error || error.message || 'Failed to initialize payment');
       }
       
+      console.log('Payment intent created successfully');
       const { clientSecret: secret, bookingId: id } = await response.json();
       clientSecret = secret;
       bookingId = id;
@@ -61,26 +69,21 @@
       // Create and mount payment element
       const paymentElement = elements.create('payment');
       paymentElement.mount('#payment-element');
-  
-      // Add event listener for changes
-      paymentElement.on('change', (event) => {
-        if (event.error) {
-          paymentError = event.error.message;
-        } else {
-          paymentError = '';
-        }
-      });
+      
+      initialized = true;
   
     } catch (error) {
       console.error('Error initializing payment:', error);
       paymentError = error.message || 'Failed to initialize payment. Please try again.';
-      onPaymentCancelled();
+      setTimeout(() => {
+        onPaymentCancelled();
+      }, 2000);
     }
   });
   
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!stripe || !elements || processing) return;
+    if (!stripe || !elements || processing || !initialized) return;
   
     processing = true;
     paymentError = '';
@@ -94,7 +97,7 @@
       });
   
       if (submitError) {
-        throw new Error(submitError.message);
+        throw submitError;
       }
   
       onPaymentComplete();
@@ -127,7 +130,7 @@
           <div>
             <div class="text-sm font-medium">Amount: £100.00</div>
             <div class="text-sm text-gray-600">
-              One hour consultation with {slot.midwife}
+              One hour consultation
             </div>
           </div>
           {#if processing}
@@ -158,7 +161,7 @@
   
         <button
           type="submit"
-          disabled={processing}
+          disabled={processing || !initialized}
           class="flex-1 py-3 px-4 bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50 disabled:cursor-not-allowed">
           {processing ? 'Processing...' : 'Pay £100.00'}
         </button>

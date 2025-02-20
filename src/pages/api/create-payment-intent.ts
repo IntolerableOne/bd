@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import Stripe from 'stripe';
 import { prisma } from '../../lib/prisma';
+import { createHold } from '../../lib/holds';
 
 const stripe = new Stripe(import.meta.env.STRIPE_SECRET_KEY);
 
@@ -8,6 +9,7 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const { slotId, name, email, phone } = await request.json();
 
+    // Validate input
     if (!slotId || !name || !email || !phone) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields' }),
@@ -44,7 +46,10 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    // Create booking record first
+    // Create hold
+    await createHold(slotId);
+
+    // Create booking record
     const booking = await prisma.booking.create({
       data: {
         name,
@@ -56,20 +61,15 @@ export const POST: APIRoute = async ({ request }) => {
       }
     });
 
-    // Then create payment intent
+    // Create simple payment intent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: 10000,
       currency: 'gbp',
-      automatic_payment_methods: {
-        enabled: true,
-      },
       metadata: {
         bookingId: booking.id,
         availabilityId: slotId,
         customerName: name,
-        customerEmail: email,
-        midwifeEmail: availability.midwife === 'clare' ? 
-          'clare@birthdebrief.com' : 'natalie@birthdebrief.com'
+        customerEmail: email
       }
     });
 
