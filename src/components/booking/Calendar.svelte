@@ -9,6 +9,16 @@
   let error = null;
   let initialized = false;
 
+  const timeSlots = [
+    { start: '09:00', end: '10:00' },
+    { start: '10:00', end: '11:00' },
+    { start: '11:00', end: '12:00' },
+    { start: '13:00', end: '14:00' },
+    { start: '14:00', end: '15:00' },
+    { start: '15:00', end: '16:00' },
+    { start: '16:00', end: '17:00' }
+  ];
+
   function getWeekDays(startDate) {
     const days = [];
     const currentDay = new Date(startDate);
@@ -23,12 +33,33 @@
     return days;
   }
 
+  function isSlotAvailable(day, timeSlot) {
+    // Create a date object for this slot
+    const slotDateTime = new Date(day);
+    const [hours, minutes] = timeSlot.start.split(':');
+    slotDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+    // Get current time plus 2 hours
+    const minDateTime = new Date(Date.now() + (2 * 60 * 60 * 1000));
+
+    // If slot is in the past or within next 2 hours, it's not available
+    if (slotDateTime <= minDateTime) {
+      return null;
+    }
+
+    return availableSlots.find(slot => {
+      const slotDate = new Date(slot.date);
+      return slotDate.toDateString() === day.toDateString() && 
+             slot.startTime === timeSlot.start;
+    });
+  }
+
   async function loadAvailability() {
     if (loading) return;
     
     loading = true;
     error = null;
-    availableSlots = []; // Clear existing slots
+    availableSlots = [];
     
     try {
       const weekDays = getWeekDays(currentDate);
@@ -50,16 +81,7 @@
         throw new Error('Invalid data format received');
       }
 
-      // Process slots immediately after receiving them
-      availableSlots = data.map(slot => ({
-        id: slot.id,
-        date: slot.date,
-        startTime: slot.startTime,
-        endTime: slot.endTime
-      }));
-
-      console.log('Processed slots:', availableSlots);
-      
+      availableSlots = data;
       initialized = true;
     } catch (e) {
       console.error('Error loading slots:', e);
@@ -70,49 +92,31 @@
     }
   }
 
-  function getAvailableSlotsForDay(day) {
-    // Convert day to date-only string for comparison
-    const dayString = day.toISOString().split('T')[0];
-    
-    return availableSlots.filter(slot => {
-      const slotString = new Date(slot.date).toISOString().split('T')[0];
-      return dayString === slotString;
-    });
+  function handleSlotSelection(slot) {
+    selectedSlot = selectedSlot?.id === slot.id ? null : slot;
   }
 
   function handleResize() {
     isMobile = window.innerWidth < 768;
   }
 
-  function handleSlotSelection(slot) {
-    selectedSlot = selectedSlot?.id === slot.id ? null : slot;
-  }
-
-  function getStartOfWeek(date) {
-    const newDate = new Date(date);
-    newDate.setDate(date.getDate() - date.getDay());
-    newDate.setHours(0, 0, 0, 0);
-    return newDate;
-  }
-
-  async function switchWeek(direction) {
+  function previousWeek() {
     const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() + (direction * 7));
+    newDate.setDate(newDate.getDate() - 7);
     currentDate = newDate;
-    
-    console.log('Switching to week:', {
-      newDate: newDate.toISOString(),
-      direction
-    });
-    
-    await loadAvailability();
+    loadAvailability();
   }
 
-  $: canGoPrevious = getStartOfWeek(currentDate) >= getStartOfWeek(new Date());
-  $: canGoNext = getStartOfWeek(currentDate) < getStartOfWeek(new Date(Date.now() + 12 * 7 * 24 * 60 * 60 * 1000));
+  function nextWeek() {
+    const newDate = new Date(currentDate);
+    newDate.setDate(newDate.getDate() + 7);
+    currentDate = newDate;
+    loadAvailability();
+  }
+
   $: weekDays = getWeekDays(currentDate);
   $: {
-    if (availableSlots.length > 0) {
+    if (initialized && availableSlots.length > 0) {
       console.log('Current state:', {
         currentDate: currentDate.toISOString(),
         weekDays: weekDays.map(d => d.toISOString()),
@@ -127,89 +131,119 @@
   onMount(async () => {
     handleResize();
     window.addEventListener('resize', handleResize);
-    
-    const today = new Date();
-    if (getStartOfWeek(currentDate) < getStartOfWeek(today)) {
-      currentDate = today;
-    }
-    
     await loadAvailability();
-
     return () => window.removeEventListener('resize', handleResize);
   });
 </script>
 
-<div>
+<!-- Mobile View -->
+<div class="block md:hidden">
+  <div class="flex justify-between items-center mb-4">
+    <button 
+      on:click={previousWeek}
+      class="p-2 rounded-lg hover:bg-green-100">
+      Previous Week
+    </button>
+    <h3 class="text-lg font-semibold">
+      {weekDays[0].toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })} - 
+      {weekDays[6].toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })}
+    </h3>
+    <button 
+      on:click={nextWeek}
+      class="p-2 rounded-lg hover:bg-green-100">
+      Next Week
+    </button>
+  </div>
+
   {#if loading && !initialized}
     <div class="flex justify-center items-center py-16">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700"></div>
     </div>
-  {:else if error}
-    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-      <span class="block sm:inline">{error}</span>
-      <button 
-        class="mt-2 px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200"
-        on:click={loadAvailability}>
-        Try Again
-      </button>
-    </div>
   {:else}
-    <div class="flex justify-between items-center mb-4">
-      <button 
-        class="p-2 rounded-lg hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
-        on:click={() => switchWeek(-1)}
-        disabled={!canGoPrevious}
-        aria-label="Previous Week">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" 
-          stroke={canGoPrevious ? "currentColor" : "#9CA3AF"} 
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M15 18l-6-6 6-6"/>
-        </svg>
-      </button>
-      <h3 class="text-lg font-semibold">
-        {weekDays[0].toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })} - 
-        {weekDays[6].toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })}
-      </h3>
-      <button 
-        class="p-2 rounded-lg hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
-        on:click={() => switchWeek(1)}
-        disabled={!canGoNext}
-        aria-label="Next Week">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" 
-          stroke={canGoNext ? "currentColor" : "#9CA3AF"} 
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 18l6-6-6-6"/>
-        </svg>
-      </button>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div class="space-y-4">
       {#each weekDays as day}
-        {@const daySlots = getAvailableSlotsForDay(day)}
+        {@const daySlots = availableSlots.filter(slot => {
+          const slotDate = new Date(slot.date);
+          return slotDate.toDateString() === day.toDateString();
+        })}
         {#if daySlots.length > 0}
-          <div class="border rounded-lg p-4 bg-white shadow-sm">
-            <h4 class="font-semibold mb-3 text-center">
+          <div class="border rounded-lg p-4 bg-white">
+            <h4 class="font-semibold mb-3">
               {day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
             </h4>
             <div class="space-y-2">
-              {#each daySlots as slot}
-                <button
-                  class="w-full p-3 text-left rounded-lg transition-colors {selectedSlot?.id === slot.id ? 'bg-green-700 text-white' : 'bg-green-50 hover:bg-green-100 border border-green-200'}"
-                  on:click={() => handleSlotSelection(slot)}>
-                  <div class="text-sm font-medium">{slot.startTime}</div>
-                </button>
+              {#each timeSlots as timeSlot}
+                {@const slot = isSlotAvailable(day, timeSlot)}
+                {#if slot}
+                  <button
+                    class="w-full p-3 text-left rounded-lg transition-colors
+                      {selectedSlot?.id === slot.id ? 
+                        'bg-green-700 text-white' : 
+                        'bg-green-50 hover:bg-green-100 border border-green-200'}"
+                    on:click={() => handleSlotSelection(slot)}>
+                    <div class="text-sm font-medium">{timeSlot.start}</div>
+                  </button>
+                {/if}
               {/each}
             </div>
           </div>
         {/if}
       {/each}
     </div>
+  {/if}
+</div>
 
-    {#if loading && initialized}
-      <div class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-2">
-        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-green-700"></div>
-        <span class="text-sm">Updating...</span>
-      </div>
-    {/if}
+<!-- Desktop View -->
+<div class="hidden md:block">
+  <div class="flex justify-between items-center mb-4">
+    <button 
+      on:click={previousWeek}
+      class="p-2 rounded-lg hover:bg-green-100">
+      Previous Week
+    </button>
+    <h3 class="text-lg font-semibold">
+      {weekDays[0].toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })} - 
+      {weekDays[6].toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })}
+    </h3>
+    <button 
+      on:click={nextWeek}
+      class="p-2 rounded-lg hover:bg-green-100">
+      Next Week
+    </button>
+  </div>
+
+  {#if loading && !initialized}
+    <div class="flex justify-center items-center py-16">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700"></div>
+    </div>
+  {:else}
+    <div class="grid grid-cols-7 gap-4">
+      {#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as day}
+        <div class="text-center font-semibold">{day}</div>
+      {/each}
+
+      {#each weekDays as day}
+        <div class="border rounded-lg p-4 bg-white min-h-[150px]">
+          <h4 class="font-semibold mb-3 text-center">
+            {day.getDate()}
+          </h4>
+          <div class="space-y-2">
+            {#each timeSlots as timeSlot}
+              {@const slot = isSlotAvailable(day, timeSlot)}
+              {#if slot}
+                <button
+                  class="w-full p-2 text-left rounded-lg text-sm transition-colors
+                    {selectedSlot?.id === slot.id ? 
+                      'bg-green-700 text-white' : 
+                      'bg-green-50 hover:bg-green-100 border border-green-200'}"
+                  on:click={() => handleSlotSelection(slot)}>
+                  <div class="text-sm font-medium">{timeSlot.start}</div>
+                </button>
+              {/if}
+            {/each}
+          </div>
+        </div>
+      {/each}
+    </div>
   {/if}
 </div>

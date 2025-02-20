@@ -6,40 +6,26 @@ export async function GET({ url }: APIContext) {
     const startDate = url.searchParams.get('startDate');
     const endDate = url.searchParams.get('endDate');
 
-    console.log('Received date range:', { startDate, endDate });
-
     if (!startDate || !endDate) {
       return new Response(JSON.stringify({ error: 'Start and end dates are required' }), {
         status: 400,
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    // Parse dates and ensure they're valid
     const startDateTime = new Date(startDate);
     const endDateTime = new Date(endDate);
-
-    console.log('Parsed dates:', {
-      startDateTime,
-      endDateTime
-    });
 
     if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
       return new Response(JSON.stringify({ error: 'Invalid date format' }), {
         status: 400,
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    // Log the query we're about to make
-    console.log('Querying for slots between:', {
-      start: startDateTime.toISOString(),
-      end: endDateTime.toISOString()
-    });
+    // Get current time plus 2 hours
+    const minDateTime = new Date(Date.now() + (2 * 60 * 60 * 1000));
+    minDateTime.setMinutes(0, 0, 0); // Round to nearest hour
 
     const slots = await prisma.availability.findMany({
       where: {
@@ -47,28 +33,31 @@ export async function GET({ url }: APIContext) {
           gte: startDateTime,
           lte: endDateTime
         },
-        booking: null
+        AND: [
+          {
+            date: {
+              gte: minDateTime
+            }
+          },
+          {
+            booking: null // Only return slots that aren't booked
+          }
+        ]
       },
       orderBy: {
         date: 'asc'
       }
     });
 
-    console.log('Found slots:', slots);
-
     return new Response(JSON.stringify(slots), {
       status: 200,
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
     console.error('Error fetching available slots:', error);
     return new Response(JSON.stringify({ error: 'Failed to fetch slots' }), {
       status: 500,
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
   }
 }

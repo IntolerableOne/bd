@@ -32,7 +32,7 @@
   }
 </script>
 
-<div class="max-w-4xl mx-auto">
+<div class="mx-auto">
   <!-- Progress Steps -->
   <div class="mb-8">
     <div class="flex justify-between">
@@ -54,11 +54,6 @@
           <div class="absolute -top-4 right-0 w-10 h-10 rounded-full {currentStep === 3 ? 'bg-green-700' : 'bg-gray-300'} text-white flex items-center justify-center">3</div>
         </div>
       </div>
-    </div>
-    <div class="flex justify-between mt-4">
-      <span class="text-sm font-medium">Your Details</span>
-      <span class="text-sm font-medium">Select Time</span>
-      <span class="text-sm font-medium">Payment</span>
     </div>
   </div>
 
