@@ -21,7 +21,7 @@ model Availability {
   endTime   String
   midwife   String
   booking   Booking?
-  hold      Hold?    // One-to-one relationship with Hold
+  hold      Hold?    // Add this relation
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -44,7 +44,7 @@ model Booking {
 model Hold {
   id             String       @id @default(cuid())
   availability   Availability @relation(fields: [availabilityId], references: [id])
-  availabilityId String       @unique  // One-to-one relationship with Availability
+  availabilityId String       @unique
   expiresAt      DateTime
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
