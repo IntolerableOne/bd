@@ -1,10 +1,10 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "prisma-client-js"
 }
 
 model User {
@@ -20,34 +20,42 @@ model Availability {
   startTime String
   endTime   String
   midwife   String
-  booking   Booking?
-  hold      Hold?    // Add this relation
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  booking   Booking?
+  hold      Hold?
 }
 
 model Booking {
-  id             String       @id @default(cuid())
-  name           String
-  email          String
-  phone          String
-  amount         Int
-  paid           Boolean      @default(false)
-  availability   Availability @relation(fields: [availabilityId], references: [id])
-  availabilityId String       @unique
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id              String        @id @default(cuid())
+  name            String
+  email           String
+  phone           String
+  amount          Int
+  paid            Boolean       @default(false)
+  availabilityId  String        @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  status          BookingStatus @default(PENDING)
+  stripePaymentId String?
+  availability    Availability  @relation(fields: [availabilityId], references: [id])
 
   @@index([email])
 }
 
 model Hold {
   id             String       @id @default(cuid())
-  availability   Availability @relation(fields: [availabilityId], references: [id])
   availabilityId String       @unique
   expiresAt      DateTime
   createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  updatedAt      DateTime
+  availability   Availability @relation(fields: [availabilityId], references: [id])
 
   @@index([availabilityId])
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
 }

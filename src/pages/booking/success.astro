@@ -4,22 +4,26 @@ import Container from "@components/container.astro";
 import { Icon } from "astro-icon";
 import { prisma } from '../../lib/prisma';
 
-interface Booking {
+interface BookingData {
   id: string;
   name: string;
   email: string;
   phone: string;
+  amount: number;
+  paid: boolean;
+  availabilityId: string;
   availability: {
     date: Date;
     startTime: string;
+    midwife: string;
   };
   createdAt: Date;
   updatedAt: Date;
 }
 
 const bookingId = Astro.url.searchParams.get('bookingId');
-let booking: Booking | null = null;
-let error: string | null = null;
+let booking: BookingData | null = null;
+let errorMessage: string | null = null;
 
 if (bookingId) {
   try {
@@ -29,30 +33,37 @@ if (bookingId) {
         availability: {
           select: {
             date: true,
-            startTime: true
+            startTime: true,
+            midwife: true
           }
         }
       }
     });
     
     if (result) {
-      booking = {
-        ...result,
-        availability: {
-          date: result.availability?.date ?? new Date(),
-          startTime: result.availability?.startTime ?? ''
-        }
-      };
+      booking = result as unknown as BookingData;
     } else {
-      error = `Booking ${bookingId} not found`;
+      errorMessage = `Booking ${bookingId} not found`;
     }
   } catch (e) {
-    error = e instanceof Error ? e.message : 'Failed to fetch booking details';
+    errorMessage = e instanceof Error ? e.message : 'Failed to fetch booking details';
   }
 } else {
-  error = 'Missing booking ID in URL parameters';
+  errorMessage = 'Missing booking ID in URL parameters';
+}
+
+// Function to format time from 24h to 12h
+function formatTime(timeString: string): string {
+  if (!timeString) return '';
+  
+  const [hours, minutes] = timeString.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const formattedHour = hour % 12 || 12;
+  return `${formattedHour}:${minutes} ${ampm}`;
 }
 ---
+
 <Layout title="Payment Successful">
   <Container>
     <div class="max-w-xl mx-auto py-16 text-center">
@@ -62,28 +73,38 @@ if (bookingId) {
         </div>
         <h1 class="text-4xl font-bold mb-4">Payment Successful</h1>
         
-        {error ? (
+        {errorMessage ? (
           <div class="bg-red-50 text-red-700 p-4 rounded-lg">
-            <p class="font-medium">Error: {error}</p>
+            <p class="font-medium">Error: {errorMessage}</p>
             <p class="mt-2">Please contact support with your booking reference.</p>
           </div>
         ) : booking ? (
           <>
             <p class="text-lg text-gray-600 mb-8">
-              Thank you for booking with Birth Debrief. We'll be in touch shortly 
+              Thank you for booking with Birth Debrief. We have sent a confirmation email to your registered address
               with your video consultation details.
             </p>
             <div class="mt-8 bg-green-50 p-6 rounded-lg">
               <h3 class="font-semibold mb-4">Booking Details</h3>
-              <p>Date: {new Date(booking.availability.date).toLocaleDateString('en-GB')}</p>
-              <p>Time: {booking.availability.startTime}</p>
+              <p>Date: {new Date(booking.availability.date).toLocaleDateString('en-GB', { 
+                weekday: 'long',
+                day: 'numeric', 
+                month: 'long', 
+                year: 'numeric'
+              })}</p>
+              <p>Time: {formatTime(booking.availability.startTime)}</p>
+              <p>Midwife: {booking.availability.midwife}</p>
               <p class="mt-4">Confirmation sent to: {booking.email}</p>
               <p class="mt-2 text-sm text-gray-600">
                 Booking ID: {bookingId}
               </p>
             </div>
           </>
-        ) : null}
+        ) : (
+          <div class="text-lg text-gray-600 mb-8">
+            Your payment has been processed successfully. Please check your email for booking details.
+          </div>
+        )}
       </div>
       
       <a

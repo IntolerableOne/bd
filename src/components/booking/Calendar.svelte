@@ -8,10 +8,12 @@
   let currentDate = new Date();
   let isMobile = false;
   let availableSlots = [];
-  let loading = false;  // Changed to false initially
+  let loading = false;
   let error = null;
   let initialized = false;
   let weekDays = [];
+  let retryCount = 0;
+  const maxRetries = 3;
 
   function getWeekDays(startDate) {
     const days = [];
@@ -37,12 +39,10 @@
   }
 
   async function loadAvailability() {
-    // Remove the early return on loading
     loading = true;
     isLoading = true;
     error = null;
-    availableSlots = [];
-
+    
     console.log('Loading availability...'); // Debug log
     
     try {
@@ -68,6 +68,12 @@
       );
       
       if (!response.ok) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          console.log(`Retry attempt ${retryCount}/${maxRetries}...`);
+          setTimeout(() => loadAvailability(), 1000); // Retry after 1 second
+          return;
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
@@ -86,6 +92,7 @@
       }));
       
       initialized = true;
+      retryCount = 0; // Reset retry counter on success
       await tick();
       
     } catch (e) {
@@ -120,13 +127,21 @@
     isMobile = window.innerWidth < 768;
   }
 
+  function formatTime(timeString) {
+    // Convert 24-hour format to 12-hour format with AM/PM
+    const [hours, minutes] = timeString.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+  }
+
   onMount(async () => {
     handleResize();
     window.addEventListener('resize', handleResize);
     await loadAvailability();
     
     // Set up periodic refresh of availability
-    const refreshInterval = setInterval(loadAvailability, 30000); // Refresh every 30 seconds
+    const refreshInterval = setInterval(loadAvailability, 60000); // Refresh every minute
     
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -192,7 +207,7 @@
                       'bg-green-700 text-white' : 
                       'bg-green-50 hover:bg-green-100 border border-green-200'}"
                   on:click={() => handleSlotSelection(slot)}>
-                  <div class="text-sm font-medium">{slot.startTime}</div>
+                  <div class="text-sm font-medium">{formatTime(slot.startTime)}</div>
                 </button>
               {/each}
             </div>
@@ -234,7 +249,7 @@
 
       {#each weekDays as day}
         {@const daySlots = getDaySlotsForDate(day)}
-        <div class="border rounded-lg p-4 bg-white min-h-[150px]">
+        <div class="border rounded-lg p-4 bg-white min-h-[150px] max-h-[400px] overflow-y-auto">
           <h4 class="font-semibold mb-3 text-center">
             {day.getDate()}
           </h4>
@@ -246,7 +261,7 @@
                     'bg-green-700 text-white' : 
                     'bg-green-50 hover:bg-green-100 border border-green-200'}"
                 on:click={() => handleSlotSelection(slot)}>
-                <div class="text-sm font-medium">{slot.startTime}</div>
+                <div class="text-sm font-medium">{formatTime(slot.startTime)}</div>
               </button>
             {/each}
           </div>
@@ -257,7 +272,18 @@
 </div>
 
 {#if !loading && !error && availableSlots.length === 0}
-  <div class="text-center py-8 text-gray-600">
-    No available slots for this week. Please try another week.
+  <div class="text-center py-8 bg-yellow-50 border border-yellow-200 rounded-lg">
+    <p class="text-yellow-700 mb-2">No available slots found for this week.</p>
+    <p class="text-yellow-600">
+      This could be due to:
+    </p>
+    <ul class="text-yellow-600 list-disc list-inside mt-2 mb-4">
+      <li>All slots are booked</li>
+      <li>No slots have been created yet</li>
+      <li>A temporary connection issue with our system</li>
+    </ul>
+    <p class="text-yellow-700">
+      Please try another week or <a href="/contact" class="underline font-medium">contact us</a> for assistance.
+    </p>
   </div>
 {/if}

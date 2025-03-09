@@ -35,7 +35,7 @@ export const POST: APIRoute = async ({ request }) => {
     // Check if slot exists and is available
     const availability = await prisma.availability.findUnique({
       where: { id: slotId },
-      include: { booking: true }
+      include: { booking: true, hold: true }
     });
 
     if (!availability) {
@@ -60,20 +60,33 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    console.log('Creating hold...');
-    // Create hold
-    await createHold(slotId);
+    // Check if there's an active hold by someone else
+    if (availability.hold && availability.hold.expiresAt > new Date()) {
+      console.log('Slot is currently on hold:', slotId);
+      return new Response(
+        JSON.stringify({ error: 'Time slot is currently being reserved by another user' }),
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
 
+    console.log('Creating hold...');
+    // Create or refresh hold
+    const hold = await createHold(slotId);
+    
     console.log('Creating booking record...');
-    // Create booking record
+    // Create booking record with PENDING status
     const booking = await prisma.booking.create({
       data: {
         name,
         email,
         phone,
         availabilityId: slotId,
-        amount: 10000,
+        amount: 10000, // £100 in pence
         paid: false
+        // Remove status field until Prisma is regenerated
       }
     });
 
@@ -94,7 +107,8 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(
       JSON.stringify({ 
         clientSecret: paymentIntent.client_secret,
-        bookingId: booking.id 
+        bookingId: booking.id,
+        holdExpiresAt: hold ? hold.expiresAt : null
       }),
       { 
         status: 200,

@@ -4,7 +4,8 @@
   const dispatch = createEventDispatcher();
 
   export let selectedMidwife;
-  export let currentDate;
+  // Remove unused export
+  // export let currentDate;
   export let slots = [];
   export let viewDates = [];
 
@@ -12,14 +13,23 @@
   let tooltipPosition = { x: 0, y: 0 };
   let tooltipVisible = false;
 
+  // Extended time slots from 7AM to 10PM
   const timeSlots = [
+    { start: '07:00', end: '08:00' },
+    { start: '08:00', end: '09:00' },
     { start: '09:00', end: '10:00' },
     { start: '10:00', end: '11:00' },
     { start: '11:00', end: '12:00' },
+    { start: '12:00', end: '13:00' },
     { start: '13:00', end: '14:00' },
     { start: '14:00', end: '15:00' },
     { start: '15:00', end: '16:00' },
-    { start: '16:00', end: '17:00' }
+    { start: '16:00', end: '17:00' },
+    { start: '17:00', end: '18:00' },
+    { start: '18:00', end: '19:00' },
+    { start: '19:00', end: '20:00' },
+    { start: '20:00', end: '21:00' },
+    { start: '21:00', end: '22:00' }
   ];
 
   function isSlotAvailable(day, timeSlot) {
@@ -55,7 +65,8 @@
   }
 
   function getSlotStatus(slot) {
-    if (slot.booking?.paid) return 'booked';
+    if (slot.booking?.paid) return 'confirmed';
+    if (slot.booking) return 'pending';
     if (slot.hold && new Date(slot.hold.expiresAt) > new Date()) return 'held';
     return 'available';
   }
@@ -65,7 +76,7 @@
     if (existingSlot?.disabled) return;
     
     // Only allow modifying available slots
-    if (existingSlot?.status === 'booked' || existingSlot?.status === 'held') return;
+    if (existingSlot?.status === 'confirmed' || existingSlot?.status === 'pending' || existingSlot?.status === 'held') return;
     
     if (existingSlot) {
       dispatch('removeSlot', existingSlot);
@@ -80,6 +91,14 @@
       day: 'numeric',
       month: 'short'
     });
+  }
+
+  function formatTime(timeString) {
+    // Convert 24-hour format to 12-hour format with AM/PM
+    const [hours, minutes] = timeString.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
   }
 
   function showTooltip(event, slot) {
@@ -103,7 +122,8 @@
         name: slot.booking.name,
         email: slot.booking.email,
         date: formatDate(slot.date),
-        time: slot.startTime,
+        time: formatTime(slot.startTime),
+        status: slot.booking.status || (slot.booking.paid ? 'CONFIRMED' : 'PENDING'),
         paid: slot.booking.paid
       };
     } else if (slot.hold) {
@@ -111,7 +131,7 @@
       tooltipData = {
         type: 'hold',
         date: formatDate(slot.date),
-        time: slot.startTime,
+        time: formatTime(slot.startTime),
         expiresIn: Math.max(0, Math.floor((expiresAt - new Date()) / 1000 / 60)) // minutes
       };
     }
@@ -129,10 +149,12 @@
     if (!slot) return 'hover:bg-green-50 border border-green-200';
     
     switch (slot.status) {
-      case 'booked':
-        return 'bg-gray-200 cursor-not-allowed';
+      case 'confirmed':
+        return 'bg-green-200 cursor-not-allowed';
+      case 'pending':
+        return 'bg-yellow-200 cursor-not-allowed';
       case 'held':
-        return 'bg-yellow-100';
+        return 'bg-blue-100';
       default:
         return 'bg-green-100 hover:bg-green-200';
     }
@@ -147,7 +169,7 @@
         <h4 class="text-center font-semibold mb-4">
           {formatDate(day)}
         </h4>
-        <div class="space-y-2">
+        <div class="space-y-2 max-h-[400px] overflow-y-auto">
           {#each timeSlots as timeSlot}
             {@const slot = isSlotAvailable(day, timeSlot)}
             <button
@@ -157,16 +179,18 @@
               on:mouseleave={hideTooltip}
               on:focus={(e) => showTooltip(e, slot)}
               on:blur={hideTooltip}
-              disabled={slot?.disabled || slot?.status === 'booked' || slot?.status === 'held'}>
+              disabled={slot?.disabled || slot?.status === 'confirmed' || slot?.status === 'pending'}>
               <div class="flex justify-between items-center">
-                <span class="font-medium">{timeSlot.start}</span>
+                <span class="font-medium">{formatTime(timeSlot.start)}</span>
                 <span>
                   {#if slot?.disabled}
                     <span class="text-gray-500 text-xs">Expired</span>
-                  {:else if slot?.status === 'booked'}
-                    <span>🔒</span>
-                  {:else if slot?.status === 'held'}
+                  {:else if slot?.status === 'confirmed'}
+                    <span>✓</span>
+                  {:else if slot?.status === 'pending'}
                     <span>⏳</span>
+                  {:else if slot?.status === 'held'}
+                    <span>⌛</span>
                   {:else if slot}
                     <span class="text-red-500 hover:text-red-700">×</span>
                   {/if}
@@ -189,8 +213,8 @@
 <div class="hidden md:block">
   <div class="grid grid-cols-7 gap-2">
     {#each viewDates as day}
-      <div class="border rounded-lg p-2 min-h-[180px] bg-white">
-        <h4 class="text-center font-semibold mb-2">
+      <div class="border rounded-lg p-2 min-h-[180px] max-h-[600px] overflow-y-auto bg-white">
+        <h4 class="text-center font-semibold mb-2 sticky top-0 bg-white">
           {formatDate(day)}
         </h4>
         <div class="space-y-1">
@@ -203,16 +227,18 @@
               on:mouseleave={hideTooltip}
               on:focus={(e) => showTooltip(e, slot)}
               on:blur={hideTooltip}
-              disabled={slot?.disabled || slot?.status === 'booked' || slot?.status === 'held'}>
+              disabled={slot?.disabled || slot?.status === 'confirmed' || slot?.status === 'pending'}>
               <div class="flex justify-between items-center">
-                <span>{timeSlot.start}</span>
+                <span>{formatTime(timeSlot.start)}</span>
                 <span>
                   {#if slot?.disabled}
                     <span class="text-gray-500 text-xs">Expired</span>
-                  {:else if slot?.status === 'booked'}
-                    <span>🔒</span>
-                  {:else if slot?.status === 'held'}
+                  {:else if slot?.status === 'confirmed'}
+                    <span>✓</span>
+                  {:else if slot?.status === 'pending'}
                     <span>⏳</span>
+                  {:else if slot?.status === 'held'}
+                    <span>⌛</span>
                   {:else if slot}
                     <span class="text-red-500 hover:text-red-700">×</span>
                   {/if}
@@ -242,13 +268,16 @@
         <p class="font-semibold">{tooltipData.name}</p>
         <p class="text-sm text-gray-600">{tooltipData.email}</p>
         <p class="text-sm text-gray-600">{tooltipData.date} at {tooltipData.time}</p>
-        <p class="text-sm font-medium {tooltipData.paid ? 'text-green-600' : 'text-yellow-600'}">
-          {tooltipData.paid ? 'Payment Confirmed' : 'Payment Pending'}
+        <p class="text-sm font-medium 
+          {tooltipData.status === 'CONFIRMED' || tooltipData.paid ? 'text-green-600' : 
+           tooltipData.status === 'PENDING' ? 'text-yellow-600' : 'text-gray-600'}">
+          {tooltipData.status === 'CONFIRMED' || tooltipData.paid ? 'Confirmed' : 
+           tooltipData.status === 'PENDING' ? 'Payment Pending' : tooltipData.status}
         </p>
       {:else if tooltipData.type === 'hold'}
         <p class="font-semibold">Slot on Hold</p>
         <p class="text-sm text-gray-600">{tooltipData.date} at {tooltipData.time}</p>
-        <p class="text-sm text-yellow-600">
+        <p class="text-sm text-blue-600">
           Expires in {tooltipData.expiresIn} minute{tooltipData.expiresIn !== 1 ? 's' : ''}
         </p>
       {/if}

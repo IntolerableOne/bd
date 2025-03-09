@@ -20,7 +20,8 @@
   };
   let loading = {
     slots: false,
-    bookings: false
+    bookings: false,
+    cleanupHolds: false
   };
   let selectedView = 'week';
   let viewDates = [];
@@ -28,6 +29,7 @@
   let filterStatus = 'all';
   let filterMidwife = 'all';
   let filterDateRange = 'all';
+  let cleanupMessage = '';
 
   function getWeekDates(date) {
     const dates = [];
@@ -46,7 +48,6 @@
   // Initialize viewDates
   $: {
     viewDates = getWeekDates(currentDate);
-    console.log('Updated viewDates:', viewDates);
   }
 
   async function handleLogin() {
@@ -175,6 +176,37 @@
     }
   }
 
+  async function cleanupExpiredHolds() {
+    loading.cleanupHolds = true;
+    cleanupMessage = '';
+    
+    try {
+      const token = localStorage.getItem('adminToken');
+      const response = await fetch('/api/admin/cleanup-holds', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to clean up expired holds');
+      
+      const data = await response.json();
+      cleanupMessage = data.message || 'Cleanup completed successfully';
+      
+      // Reload data after cleanup
+      await loadData();
+    } catch (error) {
+      console.error('Error cleaning up expired holds:', error);
+      cleanupMessage = 'Failed to clean up expired holds: ' + (error.message || '');
+    } finally {
+      loading.cleanupHolds = false;
+      // Auto-hide message after 5 seconds
+      setTimeout(() => {
+        cleanupMessage = '';
+      }, 5000);
+    }
+  }
+
   function previousPeriod() {
     const newDate = new Date(currentDate);
     newDate.setDate(newDate.getDate() - 7);
@@ -189,13 +221,24 @@
     viewDates = getWeekDates(currentDate);
   }
 
-  $: viewDates = getWeekDates(currentDate);
-
   onMount(async () => {
     const token = localStorage.getItem('adminToken');
     if (token) {
       isAuthenticated = true;
       await loadData();
+
+      // Set up auto-refresh every minute
+      const refreshInterval = setInterval(() => {
+        if (isAuthenticated) {
+          loadData();
+        } else {
+          clearInterval(refreshInterval);
+        }
+      }, 60000);
+
+      return () => {
+        clearInterval(refreshInterval);
+      };
     }
   });
 </script>
@@ -240,12 +283,26 @@
       <!-- Header -->
       <div class="flex flex-col md:flex-row justify-between items-center gap-4">
         <h1 class="text-2xl font-bold">Admin Panel</h1>
-        <button
-          on:click={handleLogout}
-          class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-          Logout
-        </button>
+        <div class="flex gap-2">
+          <button
+            on:click={cleanupExpiredHolds}
+            disabled={loading.cleanupHolds}
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+            {loading.cleanupHolds ? 'Cleaning...' : 'Cleanup Expired Holds'}
+          </button>
+          <button
+            on:click={handleLogout}
+            class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+            Logout
+          </button>
+        </div>
       </div>
+
+      {#if cleanupMessage}
+        <div class="bg-blue-50 border border-blue-200 text-blue-600 p-3 rounded-lg">
+          {cleanupMessage}
+        </div>
+      {/if}
 
       <!-- Stats Overview -->
       <AdminHeader {earnings} {bookings} {slots} />
@@ -286,9 +343,8 @@
           </button>
         </div>
 
-        <!-- Calendar Grid -->
         <!-- Calendar Headers -->
-        <div class="grid grid-cols-7 gap-2 mb-2">
+        <div class="hidden md:grid grid-cols-7 gap-2 mb-2">
           {#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as day}
             <div class="text-center font-semibold py-2">{day}</div>
           {/each}
@@ -296,7 +352,6 @@
 
         <AdminCalendar
         {selectedMidwife}
-        {currentDate}
         {slots}
         {viewDates}
         on:addSlot={handleAddSlot}
@@ -324,6 +379,14 @@
               <option value="natalie">Natalie</option>
             </select>
             <select
+              bind:value={filterStatus}
+              class="px-4 py-2 border rounded-md">
+              <option value="all">All Statuses</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="pending">Pending</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select
               bind:value={filterDateRange}
               class="px-4 py-2 border rounded-md">
               <option value="all">All Dates</option>
@@ -339,6 +402,7 @@
       <BookingsTable
         {bookings}
         {searchTerm}
+        {filterStatus}
         {filterMidwife}
         {filterDateRange}
       />

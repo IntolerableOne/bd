@@ -15,7 +15,8 @@ export const GET: APIRoute = async ({ params }) => {
     const slot = await prisma.availability.findUnique({
       where: { id },
       include: {
-        booking: true
+        booking: true,
+        hold: true
       }
     });
 
@@ -34,6 +35,17 @@ export const GET: APIRoute = async ({ params }) => {
       return new Response(JSON.stringify({ 
         available: false,
         error: 'Slot is already booked'
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Check if slot has an active hold by someone else
+    if (slot.hold && slot.hold.expiresAt > new Date()) {
+      return new Response(JSON.stringify({ 
+        available: false,
+        error: 'Slot is currently reserved by another user'
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }

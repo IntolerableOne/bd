@@ -16,6 +16,38 @@
   let clientSecret = "";
   let bookingId = "";
   let initialized = false;
+  let holdTimer = null;
+  let remainingHoldTime = 30 * 60; // 30 minutes in seconds
+  let formattedHoldTime = "";
+
+  function updateHoldTimer() {
+    remainingHoldTime -= 1;
+    if (remainingHoldTime <= 0) {
+      clearInterval(holdTimer);
+      paymentError = "Your reservation time has expired. Please select a new time slot.";
+      setTimeout(() => {
+        onPaymentCancelled();
+      }, 3000);
+      return;
+    }
+
+    // Format the time as MM:SS
+    const minutes = Math.floor(remainingHoldTime / 60);
+    const seconds = remainingHoldTime % 60;
+    formattedHoldTime = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  }
+
+  async function releaseHold() {
+    if (slot && slot.id) {
+      try {
+        await fetch(`/api/holds/${slot.id}`, {
+          method: 'DELETE'
+        });
+      } catch (error) {
+        console.error('Error releasing hold:', error);
+      }
+    }
+  }
 
   onMount(async () => {
     try {
@@ -55,9 +87,22 @@
       }
 
       console.log("Payment intent created successfully");
-      const { clientSecret: secret, bookingId: id } = await response.json();
+      const { clientSecret: secret, bookingId: id, holdExpiresAt } = await response.json();
       clientSecret = secret;
       bookingId = id;
+
+      // Setup the hold timer if we have an expiration time
+      if (holdExpiresAt) {
+        const expiresAt = new Date(holdExpiresAt);
+        const now = new Date();
+        const timeLeft = Math.max(0, Math.floor((expiresAt - now) / 1000)); // seconds
+        
+        remainingHoldTime = timeLeft;
+        updateHoldTimer(); // Initialize the formatted time
+        
+        // Update the timer every second
+        holdTimer = setInterval(updateHoldTimer, 1000);
+      }
 
       // Create Elements instance with appearance
       elements = stripe.elements({
@@ -113,8 +158,14 @@
   }
 
   onDestroy(() => {
-    if (elements) {
-      elements.destroy();
+    // Clear the timer if it exists
+    if (holdTimer) {
+      clearInterval(holdTimer);
+    }
+    
+    // If payment wasn't completed, release the hold
+    if (!processing && clientSecret) {
+      releaseHold();
     }
   });
 </script>
@@ -130,6 +181,13 @@
           fill="#FFF" />
       </svg>
     </div>
+
+    {#if remainingHoldTime > 0 && formattedHoldTime}
+      <div class="mb-4 bg-blue-50 border border-blue-200 text-blue-700 p-3 rounded-lg flex items-center justify-between">
+        <span>Your booking is reserved for</span>
+        <span class="font-mono font-bold">{formattedHoldTime}</span>
+      </div>
+    {/if}
 
     <div class="mb-6">
       <div class="flex justify-between items-start mb-6">
