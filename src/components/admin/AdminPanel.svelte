@@ -8,6 +8,7 @@
   let email = '';
   let password = '';
   let authError = '';
+  let authToken = '';
 
   // Admin panel state
   let selectedMidwife = 'clare';
@@ -53,6 +54,7 @@
   async function handleLogin() {
     authError = '';
     try {
+      console.log('Attempting login with email:', email);
       const response = await fetch('/api/admin/login', {
         method: 'POST',
         headers: {
@@ -64,21 +66,27 @@
       const data = await response.json();
 
       if (response.ok && data.token) {
+        console.log('Login successful, token received');
         localStorage.setItem('adminToken', data.token);
+        authToken = data.token;
         isAuthenticated = true;
         email = '';
         password = '';
         await loadData();
       } else {
+        console.error('Login failed:', data.error);
         authError = data.error || 'Login failed';
       }
     } catch (error) {
+      console.error('Login error:', error);
       authError = 'Login failed. Please try again.';
     }
   }
 
   function handleLogout() {
+    console.log('Logging out');
     localStorage.removeItem('adminToken');
+    authToken = '';
     isAuthenticated = false;
     slots = [];
     bookings = [];
@@ -104,32 +112,76 @@
   async function loadAvailability() {
     try {
       const token = localStorage.getItem('adminToken');
+      if (!token) {
+        console.error('No admin token found');
+        throw new Error('Authentication required');
+      }
+      
+      console.log('Loading availability with token');
       const response = await fetch('/api/availability', {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
       });
-      if (!response.ok) throw new Error('Failed to load availability');
+      
+      if (response.status === 401) {
+        console.error('Authentication failed when loading availability');
+        handleLogout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to load availability');
+      }
+      
       slots = await response.json();
+      console.log(`Loaded ${slots.length} slots`);
     } catch (error) {
       console.error('Error loading availability:', error);
+      if (error.message.includes('Session expired')) {
+        authError = error.message;
+      }
     }
   }
 
   async function loadBookings() {
     try {
       const token = localStorage.getItem('adminToken');
+      if (!token) {
+        console.error('No admin token found');
+        throw new Error('Authentication required');
+      }
+      
+      console.log('Loading bookings with token');
       const response = await fetch('/api/booking', {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
       });
-      if (!response.ok) throw new Error('Failed to load bookings');
+      
+      if (response.status === 401) {
+        console.error('Authentication failed when loading bookings');
+        handleLogout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to load bookings');
+      }
+      
       const data = await response.json();
-      bookings = data.bookings;
-      earnings = data.earnings;
+      bookings = data.bookings || [];
+      earnings = data.earnings || { monthly: {}, yearly: 0 };
+      console.log(`Loaded ${bookings.length} bookings`);
     } catch (error) {
       console.error('Error loading bookings:', error);
+      if (error.message.includes('Session expired')) {
+        authError = error.message;
+      }
     }
   }
 
@@ -137,6 +189,12 @@
     const { day, timeSlot } = event.detail;
     try {
       const token = localStorage.getItem('adminToken');
+      if (!token) {
+        console.error('No admin token found');
+        throw new Error('Authentication required');
+      }
+      
+      console.log(`Adding slot for ${day} at ${timeSlot.start}`);
       const response = await fetch('/api/availability', {
         method: 'POST',
         headers: {
@@ -151,10 +209,24 @@
         })
       });
       
-      if (!response.ok) throw new Error('Failed to add slot');
+      if (response.status === 401) {
+        console.error('Authentication failed when adding slot');
+        handleLogout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to add slot');
+      }
+      
+      console.log('Slot added successfully');
       await loadAvailability();
     } catch (error) {
       console.error('Error adding slot:', error);
+      if (error.message.includes('Session expired')) {
+        authError = error.message;
+      }
     }
   }
 
@@ -162,17 +234,38 @@
     const slot = event.detail;
     try {
       const token = localStorage.getItem('adminToken');
+      if (!token) {
+        console.error('No admin token found');
+        throw new Error('Authentication required');
+      }
+      
+      console.log(`Removing slot ${slot.id}`);
       const response = await fetch(`/api/availability/${slot.id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
       });
       
-      if (!response.ok) throw new Error('Failed to remove slot');
+      if (response.status === 401) {
+        console.error('Authentication failed when removing slot');
+        handleLogout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to remove slot');
+      }
+      
+      console.log('Slot removed successfully');
       await loadAvailability();
     } catch (error) {
       console.error('Error removing slot:', error);
+      if (error.message.includes('Session expired')) {
+        authError = error.message;
+      }
     }
   }
 
@@ -182,22 +275,42 @@
     
     try {
       const token = localStorage.getItem('adminToken');
+      if (!token) {
+        console.error('No admin token found');
+        throw new Error('Authentication required');
+      }
+      
+      console.log('Cleaning up expired holds');
       const response = await fetch('/api/admin/cleanup-holds', {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
       });
       
-      if (!response.ok) throw new Error('Failed to clean up expired holds');
+      if (response.status === 401) {
+        console.error('Authentication failed when cleaning up holds');
+        handleLogout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to clean up expired holds');
+      }
       
       const data = await response.json();
       cleanupMessage = data.message || 'Cleanup completed successfully';
+      console.log('Cleanup completed:', cleanupMessage);
       
       // Reload data after cleanup
       await loadData();
     } catch (error) {
       console.error('Error cleaning up expired holds:', error);
       cleanupMessage = 'Failed to clean up expired holds: ' + (error.message || '');
+      if (error.message.includes('Session expired')) {
+        authError = error.message;
+      }
     } finally {
       loading.cleanupHolds = false;
       // Auto-hide message after 5 seconds
@@ -224,8 +337,19 @@
   onMount(async () => {
     const token = localStorage.getItem('adminToken');
     if (token) {
+      console.log('Found admin token in localStorage, attempting to use it');
+      authToken = token;
       isAuthenticated = true;
-      await loadData();
+      
+      try {
+        await loadData();
+      } catch (error) {
+        console.error('Failed to load data with saved token:', error);
+        // If loading fails with the saved token, clear it and show login
+        if (error.message.includes('Authentication')) {
+          handleLogout();
+        }
+      }
 
       // Set up auto-refresh every minute
       const refreshInterval = setInterval(() => {
@@ -239,6 +363,8 @@
       return () => {
         clearInterval(refreshInterval);
       };
+    } else {
+      console.log('No admin token found, showing login screen');
     }
   });
 </script>
@@ -298,6 +424,12 @@
         </div>
       </div>
 
+      {#if authError}
+        <div class="bg-red-50 border border-red-200 text-red-600 p-3 rounded-lg">
+          {authError}
+        </div>
+      {/if}
+
       {#if cleanupMessage}
         <div class="bg-blue-50 border border-blue-200 text-blue-600 p-3 rounded-lg">
           {cleanupMessage}
@@ -350,13 +482,20 @@
           {/each}
         </div>
 
-        <AdminCalendar
-        {selectedMidwife}
-        {slots}
-        {viewDates}
-        on:addSlot={handleAddSlot}
-        on:removeSlot={handleRemoveSlot}
-      />
+        {#if loading.slots}
+          <div class="text-center py-10">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-700"></div>
+            <p class="mt-2 text-gray-600">Loading calendar data...</p>
+          </div>
+        {:else}
+          <AdminCalendar
+            {selectedMidwife}
+            {slots}
+            {viewDates}
+            on:addSlot={handleAddSlot}
+            on:removeSlot={handleRemoveSlot}
+          />
+        {/if}
       </div>
 
       <!-- Search and Filters -->
@@ -399,13 +538,20 @@
       </div>
 
       <!-- Bookings Table -->
-      <BookingsTable
-        {bookings}
-        {searchTerm}
-        {filterStatus}
-        {filterMidwife}
-        {filterDateRange}
-      />
+      {#if loading.bookings}
+        <div class="bg-white p-6 rounded-lg shadow text-center py-10">
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-700"></div>
+          <p class="mt-2 text-gray-600">Loading booking data...</p>
+        </div>
+      {:else}
+        <BookingsTable
+          {bookings}
+          {searchTerm}
+          {filterStatus}
+          {filterMidwife}
+          {filterDateRange}
+        />
+      {/if}
     </div>
   {/if}
 </div>
