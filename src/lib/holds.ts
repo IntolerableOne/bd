@@ -1,8 +1,8 @@
 // File: src/lib/holds.ts
 // Purpose: Manages slot holds using the dedicated 'Hold' model from the Prisma schema.
 
-import { prisma } from './prisma';
-import { type Prisma } from '@prisma/client'; // New line
+import { prisma } from './prisma'; // Import Prisma client instance
+import { type Prisma } from '@prisma/client'; // Import Prisma namespace directly for types
 
 // Custom error class for hold-related operations
 export class HoldError extends Error {
@@ -17,10 +17,11 @@ export class HoldError extends Error {
  * This should be called when a user indicates intent to book a slot, typically before payment.
  * @param availabilityId The ID of the availability slot to hold.
  * @param holdDurationMinutes The duration for which the hold should be active.
- * @returns The created or updated Hold object.
+ * @returns The created or updated Hold object, conforming to Prisma.HoldGetPayload<{}>.
  */
 export async function createOrUpdateHold(availabilityId: string, holdDurationMinutes: number = 15): Promise<Prisma.HoldGetPayload<{}>> {
-  const expiresAt = new Date(Date.now() + holdDurationMinutes * 60 * 1000);
+  const now = new Date(); // Get current time once
+  const expiresAt = new Date(now.getTime() + holdDurationMinutes * 60 * 1000);
   console.log(`Attempting to create/update hold for availabilityId ${availabilityId}, expires at ${expiresAt.toISOString()}`);
 
   try {
@@ -40,20 +41,22 @@ export async function createOrUpdateHold(availabilityId: string, holdDurationMin
       throw new HoldError('Slot is already booked and paid.', 'SLOT_BOOKED');
     }
 
-    // If there's an existing hold that hasn't expired, we might want to prevent a new one
-    // or let upsert handle it. For now, upsert will update the existing one.
     if (availability.hold && new Date(availability.hold.expiresAt) > new Date()) {
-      console.log(`Slot ${availabilityId} already has an active hold. Updating its expiry.`);
+      console.log(`Slot ${availabilityId} already has an active hold. Updating its expiry and updatedAt.`);
     }
 
-    // Create or update the hold for the availability slot
-    // The `availabilityId` is unique in the Hold model, so upsert works well.
+    // Create or update the hold for the availability slot.
     const hold = await prisma.hold.upsert({
-      where: { availabilityId: availabilityId },
-      update: { expiresAt },
-      create: {
+      where: { availabilityId: availabilityId }, // This relies on availabilityId being @unique in Hold model
+      update: { // Fields to update if the record exists
+        expiresAt: expiresAt,
+        updatedAt: now, // Explicitly set updatedAt on update
+      },
+      create: { // Fields to set if the record is created
         availabilityId: availabilityId,
         expiresAt: expiresAt,
+        createdAt: now, // Explicitly set createdAt
+        updatedAt: now, // Explicitly set updatedAt
       },
     });
 
@@ -63,8 +66,10 @@ export async function createOrUpdateHold(availabilityId: string, holdDurationMin
   } catch (error: any) {
     if (error instanceof HoldError) throw error;
     console.error(`Error in createOrUpdateHold for availabilityId ${availabilityId}:`, error);
-    // Check for Prisma-specific errors if needed, e.g., foreign key constraint
-    if (error.code === 'P2003') { // Foreign key constraint failed (e.g. availabilityId doesn't exist)
+    if (error.code) { 
+        console.error(`Prisma error code: ${error.code}`);
+    }
+    if (error.code === 'P2003' || error.code === 'P2025') { // P2003: Foreign key constraint failed, P2025: Record not found for relation
         throw new HoldError('Failed to create hold: Invalid availability slot.', 'INVALID_SLOT_ID');
     }
     throw new HoldError('Failed to create or update hold on the slot.', 'DB_ERROR');
@@ -73,26 +78,29 @@ export async function createOrUpdateHold(availabilityId: string, holdDurationMin
 
 /**
  * Releases (deletes) a hold on an availability slot.
- * This should be called when:
- * 1. A booking is successfully paid (in stripe-webhooks.ts).
- * 2. A user cancels the booking process (in /api/holds/release/[bookingId].ts, which would find the availabilityId).
  * @param availabilityId The ID of the availability slot whose hold is to be released.
  * @returns True if a hold was deleted, false otherwise.
  */
 export async function releaseHold(availabilityId: string): Promise<boolean> {
   console.log(`Attempting to release hold for availabilityId ${availabilityId}`);
   try {
-    const result = await prisma.hold.deleteMany({ // Use deleteMany as where is on a non-unique field if not using @unique on availabilityId in Hold
+    // Since availabilityId is @unique in the Hold model, we use it in the where clause for delete.
+    const result = await prisma.hold.delete({
       where: { availabilityId: availabilityId },
     });
 
-    if (result.count > 0) {
-      console.log(`Hold released successfully for availabilityId ${availabilityId}. Count: ${result.count}`);
+    if (result) { // `delete` returns the deleted record or throws if not found (P2025)
+      console.log(`Hold released successfully for availabilityId ${availabilityId}.`);
       return true;
     }
-    console.log(`No active hold found to release for availabilityId ${availabilityId}.`);
+    // This part might be unreachable if P2025 is thrown and caught.
+    console.log(`No active hold found to release for availabilityId ${availabilityId} (delete operation did not throw but returned falsy).`);
     return false;
   } catch (error: any) {
+    if (error.code === 'P2025') { // Prisma: "An operation failed because it depends on one or more records that were required but not found. Record to delete not found."
+        console.log(`No active hold found to release for availabilityId ${availabilityId} (P2025).`);
+        return false; // It's not an application error if the hold was already gone.
+    }
     console.error(`Error releasing hold for availabilityId ${availabilityId}:`, error);
     throw new HoldError('Failed to release hold.', 'DB_ERROR');
   }
@@ -100,7 +108,7 @@ export async function releaseHold(availabilityId: string): Promise<boolean> {
 
 /**
  * Cleans up expired Hold records and any associated unpaid Booking records.
- * This function should be called periodically (e.g., by a cron job).
+ * @returns An object reporting the number of holds and unpaid bookings deleted.
  */
 export async function cleanupExpiredHolds(): Promise<{ holdsDeleted: number, unpaidBookingsDeleted: number }> {
   const now = new Date();
@@ -118,7 +126,7 @@ export async function cleanupExpiredHolds(): Promise<{ holdsDeleted: number, unp
         },
       },
       select: {
-        id: true,
+        id: true, // ID of the Hold record itself
         availabilityId: true, // Needed to find associated unpaid bookings
       },
     });
@@ -132,20 +140,19 @@ export async function cleanupExpiredHolds(): Promise<{ holdsDeleted: number, unp
     const holdIdsToDelete = expiredHolds.map(h => h.id);
     const availabilityIdsFromExpiredHolds = expiredHolds.map(h => h.availabilityId);
 
-    // Find unpaid bookings associated with these expired holds
+    // Find unpaid bookings associated with these specific expired holds' availability slots
     const unpaidBookingsToDelete = await prisma.booking.findMany({
         where: {
             availabilityId: {
                 in: availabilityIdsFromExpiredHolds
             },
-            paid: false
+            paid: false // Only target unpaid bookings
         },
         select: {
-            id: true
+            id: true // Select only the IDs of bookings to delete
         }
     });
     const unpaidBookingIdsToDelete = unpaidBookingsToDelete.map(b => b.id);
-
 
     // Perform deletions in a transaction for atomicity
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -164,7 +171,7 @@ export async function cleanupExpiredHolds(): Promise<{ holdsDeleted: number, unp
       if (holdIdsToDelete.length > 0) {
         const deletedHoldsResult = await tx.hold.deleteMany({
           where: {
-            id: { in: holdIdsToDelete },
+            id: { in: holdIdsToDelete }, // Delete by the Hold record's own ID
           },
         });
         holdsDeletedCount = deletedHoldsResult.count;

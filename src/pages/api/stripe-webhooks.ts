@@ -57,23 +57,30 @@ export const POST: APIRoute = async ({ request }) => {
         const bookingRecord = await tx.booking.update({
           where: { id: bookingId },
           data: { paid: true },
-          include: { availability: true },
+          include: { availability: true }, // For email content
         });
 
-        if (!bookingRecord) throw new Error(`Booking record ${bookingId} not found.`);
-        if (!bookingRecord.availability) throw new Error(`Availability details missing for booking ${bookingId}.`);
+        if (!bookingRecord) {
+             console.error(`Webhook DB Error: Booking record with ID ${bookingId} not found during transaction.`);
+             throw new Error(`Booking record ${bookingId} not found.`);
+        }
+        if (!bookingRecord.availability) {
+            console.error(`Webhook DB Error: Availability details not found for booking ${bookingId}.`);
+            throw new Error(`Availability details missing for booking ${bookingId}.`);
+        }
 
+        // Update Availability to link it to the Booking
         await tx.availability.update({
           where: { id: availabilityId },
           data: { booking: { connect: { id: bookingId } } },
         });
 
         // Release the hold from the Hold table now that payment is confirmed
-        // Use the availabilityId from the payment intent metadata.
         const holdReleased = await releaseHold(availabilityId); // Calling releaseHold from lib/holds.ts
         if (holdReleased) {
           console.log(`Webhook: Hold for availabilityId ${availabilityId} released successfully after payment.`);
         } else {
+          // This is not necessarily an error if the hold was already cleaned up or never existed for some reason
           console.warn(`Webhook: No hold found to release for availabilityId ${availabilityId} after payment, or it was already released.`);
         }
         
@@ -82,23 +89,26 @@ export const POST: APIRoute = async ({ request }) => {
 
       console.log(`Webhook: Booking ${bookingId} updated to paid, linked to availability ${availabilityId}.`);
 
+      // Send emails after successful database transaction
       const bookingDetails = updatedBookingWithDetails;
-      const availabilityDetails = bookingDetails.availability;
+      const availabilityDetails = bookingDetails.availability; // Already checked this exists in transaction
 
       if (customerEmail && availabilityDetails) {
-        await sendUserBookingConfirmationEmail({
+        sendUserBookingConfirmationEmail({ // Intentionally not awaited to avoid blocking webhook response
           to: customerEmail,
           name: customerName || bookingDetails.name,
           bookingDate: availabilityDetails.date,
           bookingTime: availabilityDetails.startTime,
           midwifeName: availabilityDetails.midwife,
           bookingId: bookingDetails.id,
-        }).catch(e => console.error(`Webhook Email Error (User): ${e.message}`));
+        }).catch(e => console.error(`Webhook Email Error (User Confirmation) for ${bookingId}: ${e.message}`));
+      } else {
+          console.warn(`Webhook: Could not send user confirmation for ${bookingId}: missing customerEmail or availabilityDetails.`);
       }
 
       const teamEmail = process.env.TEAM_EMAIL_ADDRESS;
       if (teamEmail && availabilityDetails) {
-        await sendAdminBookingNotificationEmail({
+        sendAdminBookingNotificationEmail({ // Intentionally not awaited
           to: teamEmail,
           userName: bookingDetails.name,
           userEmail: bookingDetails.email,
@@ -108,23 +118,23 @@ export const POST: APIRoute = async ({ request }) => {
           midwifeName: availabilityDetails.midwife,
           bookingId: bookingDetails.id,
           bookingAmount: bookingDetails.amount,
-        }).catch(e => console.error(`Webhook Email Error (Admin): ${e.message}`));
+        }).catch(e => console.error(`Webhook Email Error (Admin Notification) for ${bookingId}: ${e.message}`));
+      } else {
+          console.warn(`Webhook: Could not send admin notification for ${bookingId}: TEAM_EMAIL_ADDRESS not set or availabilityDetails missing.`);
       }
 
     } catch (dbError: any) {
       console.error(`Webhook DB Error for Booking ID ${bookingId}: ${dbError.message}`, dbError);
-      // If it's a HoldError from releaseHold, handle it specifically if needed
-      if (dbError instanceof HoldError) {
+      if (dbError instanceof HoldError) { // Catch specific HoldError if it propagates
           console.error(`Webhook: HoldError during transaction for booking ${bookingId}: ${dbError.message}`);
       }
-      return new Response(`Webhook Database Error: ${dbError.message}`, { status: 500 });
+      return new Response(`Webhook Database Error: ${dbError.message}`, { status: 500 }); // Signal error to Stripe
     }
   } else {
     console.log(`Webhook: Received unhandled event type: ${event.type}`);
   }
 
   return new Response(JSON.stringify({ received: true }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    status: 200, headers: { 'Content-Type': 'application/json' },
   });
 };

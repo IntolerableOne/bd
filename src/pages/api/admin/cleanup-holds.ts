@@ -1,9 +1,11 @@
 // File: src/pages/api/admin/cleanup-holds.ts
 // Purpose: API endpoint to trigger the cleanup of expired slot holds.
-// This should now correctly import and use cleanupExpiredHolds from the updated lib/holds.ts
+// This imports from the updated lib/holds.ts.
 
 import type { APIRoute } from 'astro';
-import { cleanupExpiredHolds, HoldError } from '../../../lib/holds'; // Ensure HoldError is imported if used in catch
+// Ensure the path to lib/holds.ts is correct relative to this file.
+// If this file is in src/pages/api/admin/, then ../../../lib/holds is correct.
+import { cleanupExpiredHolds, HoldError } from '../../../lib/holds';
 import { authenticateRequest, createAuthenticatedResponse } from '../../../middleware/auth';
 
 export const POST: APIRoute = async ({ request }) => {
@@ -11,10 +13,12 @@ export const POST: APIRoute = async ({ request }) => {
   const adminUser = await authenticateRequest(request);
   if (!adminUser) {
     const authHeader = request.headers.get('Authorization');
-    const cronSecret = process.env.CRON_JOB_SECRET;
+    const cronSecret = process.env.CRON_JOB_SECRET; // For scheduled tasks
+
+    // Check for CRON_JOB_SECRET if you intend to call this via a scheduled task
     if (!cronSecret || !authHeader || authHeader !== `Bearer ${cronSecret}`) {
         console.warn('Unauthorized attempt to access cleanup-holds endpoint.');
-        return createAuthenticatedResponse({} as any);
+        return createAuthenticatedResponse({} as any); // Use your standard unauthorized response
     }
     console.log('Cleanup holds endpoint accessed by CRON job.');
   } else {
