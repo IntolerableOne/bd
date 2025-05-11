@@ -1,19 +1,20 @@
 // File: src/pages/api/create-payment-intent.ts
-// Changes: Switched to process.env for STRIPE_SECRET_KEY. Added more logging.
+// Changes:
+// - Imports and uses createOrUpdateHold from lib/holds.ts.
+// - Creates a Hold record before creating the Booking record.
 
 import type { APIRoute } from 'astro';
 import Stripe from 'stripe';
 import { prisma } from '../../lib/prisma';
-// createHold is not explicitly called here anymore as holds are more complex
-// and their creation might be better tied to the booking record itself if not using a separate Hold table.
-// For now, we assume a slot is "held" by virtue of a `Booking` record with `paid: false`.
-// If you have a separate `Hold` table and logic, you'd re-integrate `createHold` from `../../lib/holds`.
+import { createOrUpdateHold, HoldError } from '../../lib/holds'; // Import hold functions
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
   console.error('Payment intent error: STRIPE_SECRET_KEY is not set.');
 }
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+
+const HOLD_DURATION_MINUTES = 15; // Define hold duration, e.g., 15 minutes
 
 export const POST: APIRoute = async ({ request }) => {
   if (!stripe) {
@@ -28,52 +29,36 @@ export const POST: APIRoute = async ({ request }) => {
     console.log('API: [/api/create-payment-intent] Received data:', { slotId, name, email, phone });
 
     if (!slotId || !name || !email || !phone) {
-      console.log('API: Missing required fields:', { slotId, name, email, phone });
       return new Response(JSON.stringify({ error: 'Missing required fields (slotId, name, email, phone).' }), {
         status: 400, headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    console.log('API: Checking availability for slotId:', slotId);
-    const availability = await prisma.availability.findUnique({
-      where: { id: slotId },
-      include: { booking: true } // Check if already booked
-    });
-
-    if (!availability) {
-      console.log('API: Slot not found:', slotId);
-      return new Response(JSON.stringify({ error: 'Selected time slot not found.' }), {
-        status: 404, headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    if (availability.booking) {
-      // This means another booking (paid or unpaid) is already linked to this slot.
-      console.log('API: Slot already booked or pending payment:', slotId, 'Existing booking ID:', availability.booking.id);
-      return new Response(JSON.stringify({ error: 'This time slot is already booked or pending payment.' }), {
-        status: 409, // Conflict
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    
-    // Check if slot is in the past (more robust check)
-    const slotDateTime = new Date(availability.date);
-    const [hours, minutes] = availability.startTime.split(':');
-    slotDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-
-    const minBookingTime = new Date(Date.now() + 1 * 60 * 60 * 1000); // e.g., 1 hour in advance minimum
-
-    if (slotDateTime < minBookingTime) {
-        console.log('API: Slot is in the past or too soon to book:', slotId);
-        return new Response(JSON.stringify({ error: 'This time slot is no longer available or is too soon to book.' }), {
-            status: 400, headers: { 'Content-Type': 'application/json' }
+    // Step 1: Attempt to create or update a hold on the slot
+    try {
+      await createOrUpdateHold(slotId, HOLD_DURATION_MINUTES);
+      console.log(`API: Hold placed successfully for slotId: ${slotId}`);
+    } catch (holdError: any) {
+      if (holdError instanceof HoldError) {
+        console.warn(`API: Failed to place hold for slotId ${slotId}: ${holdError.message} (Code: ${holdError.code})`);
+        // Map HoldError codes to appropriate HTTP status codes
+        let statusCode = 400;
+        if (holdError.code === 'SLOT_NOT_FOUND') statusCode = 404;
+        if (holdError.code === 'SLOT_BOOKED' || holdError.code === 'ALREADY_HELD') statusCode = 409; // Conflict
+        return new Response(JSON.stringify({ error: holdError.message, code: holdError.code }), {
+          status: statusCode, headers: { 'Content-Type': 'application/json' }
         });
+      }
+      // For other unexpected errors during hold creation
+      console.error(`API: Unexpected error placing hold for slotId ${slotId}:`, holdError);
+      return new Response(JSON.stringify({ error: 'Failed to reserve time slot.', details: holdError.message }), {
+        status: 500, headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-
-    // Create a preliminary booking record (marked as unpaid)
-    // This record "holds" the slot. If payment fails or is abandoned, this needs cleanup.
-    console.log('API: Creating preliminary booking record...');
+    // Step 2: Create a preliminary booking record (marked as unpaid)
+    // This record is created *after* a hold is successfully placed.
+    console.log('API: Creating preliminary booking record for slotId:', slotId);
     const booking = await prisma.booking.create({
       data: {
         name,
@@ -81,27 +66,22 @@ export const POST: APIRoute = async ({ request }) => {
         phone,
         availabilityId: slotId,
         amount: 10000, // Amount in pence (£100.00)
-        paid: false, // Mark as unpaid initially
-        // You might want to add an expiry time to this unpaid booking
-        // expiresAt: new Date(Date.now() + 15 * 60 * 1000), // e.g., 15 minutes
+        paid: false,
       }
     });
     console.log('API: Preliminary booking record created with ID:', booking.id);
 
-    // Create Stripe payment intent
+    // Step 3: Create Stripe payment intent
     console.log('API: Creating Stripe payment intent for booking ID:', booking.id);
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: booking.amount, // Use amount from booking record
+      amount: booking.amount,
       currency: 'gbp',
       metadata: {
         bookingId: booking.id,
-        availabilityId: slotId,
+        availabilityId: slotId, // Keep availabilityId for easy access in webhook
         customerName: name,
         customerEmail: email,
-        // Add any other relevant metadata
       },
-      // You can add payment_method_types or let Stripe decide
-      // payment_method_types: ['card', 'link'],
       description: `Birth Debrief Consultation - Booking ID: ${booking.id}`,
     });
 
@@ -116,24 +96,28 @@ export const POST: APIRoute = async ({ request }) => {
   } catch (error: any) {
     console.error('API: [/api/create-payment-intent] Error:', error);
     let errorMessage = 'Failed to create payment intent.';
+    let statusCode = 500;
+
     if (error instanceof Stripe.errors.StripeError) {
-      console.error('API: Stripe error details:', { type: error.type, code: error.code, message: error.message });
       errorMessage = error.message || 'A Stripe error occurred.';
+      statusCode = error.statusCode || 500;
     } else if (error.code === 'P2002' && error.meta?.target?.includes('availabilityId')) {
-      // Prisma unique constraint error on Booking.availabilityId
+      // Prisma unique constraint error on Booking.availabilityId (should be caught by hold check ideally)
       errorMessage = 'This time slot was just booked. Please select another.';
-      return new Response(JSON.stringify({ error: errorMessage }), {
-        status: 409, headers: { 'Content-Type': 'application/json' }
-      });
+      statusCode = 409; // Conflict
     } else if (error.message) {
         errorMessage = error.message;
     }
+
+    // If an error occurs after hold placement but before payment intent creation,
+    // the hold will eventually expire and be cleaned up by the cron job.
+    // Or, if the user cancels, the cancellation endpoint should try to release it.
 
     return new Response(JSON.stringify({
       error: 'Failed to initiate payment.',
       details: errorMessage
     }), {
-      status: 500, headers: { 'Content-Type': 'application/json' }
+      status: statusCode, headers: { 'Content-Type': 'application/json' }
     });
   }
 };
