@@ -1,36 +1,35 @@
 // File: src/pages/api/stripe-webhooks.ts
 // Changes:
-// - Corrected the Prisma update for Availability to use the 'booking' relation field
-//   with a 'connect' operation, instead of trying to set 'bookingId' directly in data.
+// - Integrated calls to sendUserBookingConfirmationEmail and sendAdminBookingNotificationEmail.
+// - Retrieves necessary data from paymentIntent metadata and database for emails.
 
 import type { APIRoute } from 'astro';
 import Stripe from 'stripe';
 import { prisma } from '../../lib/prisma';
-import { type Prisma } from '@prisma/client'; // Import Prisma namespace for types
-import { sendBookingConfirmationEmail } from '../../lib/email';
+import { type Prisma } from '@prisma/client';
+import { sendUserBookingConfirmationEmail, sendAdminBookingNotificationEmail } from '../../lib/email'; // Import both functions
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+// Ensure Stripe is initialized only if the key is available
 if (!stripeSecretKey) {
-  console.error('Stripe webhook error: STRIPE_SECRET_KEY is not set.');
+  console.error('Stripe webhook error: STRIPE_SECRET_KEY is not set in environment variables.');
 }
 if (!webhookSecret) {
-  console.error('Stripe webhook error: STRIPE_WEBHOOK_SECRET is not set.');
+  console.error('Stripe webhook error: STRIPE_WEBHOOK_SECRET is not set in environment variables.');
 }
-
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
 export const POST: APIRoute = async ({ request }) => {
   if (!stripe || !webhookSecret) {
-    console.error('Stripe webhook endpoint called but Stripe or webhookSecret is not initialized.');
-    return new Response('Webhook Error: Server configuration error.', { status: 500 });
+    console.error('Stripe webhook endpoint called but Stripe or webhookSecret is not initialized. Check server configuration.');
+    return new Response('Webhook Error: Server configuration error. Payment processing unavailable.', { status: 500 });
   }
 
   const signature = request.headers.get('stripe-signature');
-
   if (!signature) {
-    console.error('Webhook Error: Missing Stripe signature.');
+    console.error('Webhook Error: Missing Stripe signature in request headers.');
     return new Response('Webhook Error: Missing Stripe signature.', { status: 400 });
   }
 
@@ -43,88 +42,118 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });
   }
 
+  // Handle the payment_intent.succeeded event
   if (event.type === 'payment_intent.succeeded') {
     const paymentIntent = event.data.object as Stripe.PaymentIntent;
+    
+    // Extract data from Payment Intent metadata
     const bookingId = paymentIntent.metadata?.bookingId;
     const availabilityId = paymentIntent.metadata?.availabilityId;
-    const customerEmail = paymentIntent.metadata?.customerEmail;
-    const customerName = paymentIntent.metadata?.customerName;
+    const customerEmail = paymentIntent.metadata?.customerEmail; // Email for user confirmation
+    const customerName = paymentIntent.metadata?.customerName;   // Name for user confirmation
 
-    console.log(`Processing successful payment for bookingId: ${bookingId}, availabilityId: ${availabilityId}`);
+    console.log(`Webhook: Processing successful payment for Booking ID: ${bookingId}, Availability ID: ${availabilityId}`);
 
     if (!bookingId || !availabilityId) {
-      console.error(`Webhook Error: Missing bookingId or availabilityId in paymentIntent metadata for PI_ID: ${paymentIntent.id}`);
-      // Acknowledge receipt to Stripe to prevent retries for this specific issue.
-      return new Response('Webhook Error: Missing bookingId or availabilityId in metadata.', { status: 200 });
+      console.error(`Webhook Error: Missing bookingId or availabilityId in Payment Intent metadata. PI_ID: ${paymentIntent.id}`);
+      return new Response('Webhook Error: Crucial metadata (bookingId or availabilityId) missing from Payment Intent.', { status: 200 }); // Acknowledge to Stripe
     }
 
     try {
-      // Use Prisma.TransactionClient for the type of 'tx'
-      const updatedBooking = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Use Prisma transaction to ensure atomicity
+      const updatedBookingWithDetails = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Step 1: Update the Booking to mark it as paid
-        const booking = await tx.booking.update({
+        const bookingRecord = await tx.booking.update({
           where: { id: bookingId },
           data: { paid: true },
-          include: { availability: true } // Include availability for the email confirmation
+          include: {
+            availability: true, // Include availability to get date, time, midwife for emails
+          },
         });
 
-        if (!booking.availability) {
-            // This case implies that the booking's availabilityId was null or invalid,
-            // which should ideally be caught before this stage.
-            console.error(`Critical Error: Availability relation not found for booking ${bookingId} after update.`);
-            throw new Error(`Availability data missing for booking ${bookingId}. Cannot link availability.`);
+        if (!bookingRecord) {
+            console.error(`Webhook DB Error: Booking record with ID ${bookingId} not found for update.`);
+            throw new Error(`Booking record ${bookingId} not found.`);
+        }
+        if (!bookingRecord.availability) {
+            console.error(`Webhook DB Error: Availability details not found for booking ${bookingId}. Cannot proceed with linking or email notifications.`);
+            throw new Error(`Availability details missing for booking ${bookingId}.`);
         }
 
         // Step 2: Update the Availability to link it to the now-paid Booking
-        // This is the corrected part: using the relation field 'booking' and 'connect'.
         await tx.availability.update({
           where: { id: availabilityId },
           data: {
-            booking: { // Use the relation field name (likely 'booking')
-              connect: { id: bookingId } // Connect to the Booking record by its ID
-            }
+            booking: {
+              connect: { id: bookingId },
+            },
           },
         });
 
         // Step 3: Delete any hold records associated with this availability slot
         await tx.hold.deleteMany({
-            where: { availabilityId: availabilityId }
+          where: { availabilityId: availabilityId },
         });
 
-        return booking; // Return the updated booking with its included availability
+        return bookingRecord; // Return the booking with its included availability
       });
 
-      console.log(`Booking ${bookingId} successfully updated to paid and linked to availability ${availabilityId}. Hold released.`);
+      console.log(`Webhook: Booking ${bookingId} successfully updated to paid and linked to availability ${availabilityId}. Associated hold released.`);
 
-      // Send confirmation email if customer email and booking details are available
-      if (customerEmail && updatedBooking.availability) {
+      // Step 4: Send Emails (after successful DB transaction)
+      const bookingDetails = updatedBookingWithDetails; // Renaming for clarity
+      const availabilityDetails = bookingDetails.availability; // Already checked this exists
+
+      // Send User Confirmation Email
+      if (customerEmail && availabilityDetails) {
         try {
-          await sendBookingConfirmationEmail({
+          await sendUserBookingConfirmationEmail({
             to: customerEmail,
-            name: customerName || updatedBooking.name, // Use name from metadata or booking
-            bookingDate: updatedBooking.availability.date,
-            bookingTime: updatedBooking.availability.startTime,
-            midwifeName: updatedBooking.availability.midwife, // Assuming midwife is on availability
-            bookingId: updatedBooking.id,
+            name: customerName || bookingDetails.name, // Use metadata name or fallback to booking name
+            bookingDate: availabilityDetails.date,
+            bookingTime: availabilityDetails.startTime,
+            midwifeName: availabilityDetails.midwife,
+            bookingId: bookingDetails.id,
           });
-          console.log(`Booking confirmation email sent to ${customerEmail} for booking ${bookingId}.`);
+          console.log(`Webhook: User booking confirmation email successfully queued for ${customerEmail} (Booking ID: ${bookingId}).`);
         } catch (emailError: any) {
-          // Log email sending failure but don't let it fail the webhook processing
-          console.error(`Failed to send confirmation email for booking ${bookingId}: ${emailError.message}`, emailError);
+          console.error(`Webhook Email Error: Failed to send user confirmation for Booking ID ${bookingId}: ${emailError.message}`, emailError);
+          // Log error, but don't fail the webhook for this.
         }
       } else {
-        console.warn(`Could not send confirmation email for booking ${bookingId}: missing customer email or booking.availability details.`);
+        console.warn(`Webhook Email Warning: Could not send user confirmation for Booking ID ${bookingId} due to missing customer email or availability details.`);
+      }
+
+      // Send Admin/Team Notification Email
+      const teamEmail = process.env.TEAM_EMAIL_ADDRESS;
+      if (teamEmail && availabilityDetails) {
+        try {
+          await sendAdminBookingNotificationEmail({
+            to: teamEmail,
+            userName: bookingDetails.name,
+            userEmail: bookingDetails.email, // Email from booking record
+            userPhone: bookingDetails.phone, // Phone from booking record
+            bookingDate: availabilityDetails.date,
+            bookingTime: availabilityDetails.startTime,
+            midwifeName: availabilityDetails.midwife,
+            bookingId: bookingDetails.id,
+            bookingAmount: bookingDetails.amount, // Amount in pence from booking record
+          });
+          console.log(`Webhook: Admin new booking notification successfully queued for ${teamEmail} (Booking ID: ${bookingId}).`);
+        } catch (emailError: any) {
+          console.error(`Webhook Email Error: Failed to send admin notification for Booking ID ${bookingId}: ${emailError.message}`, emailError);
+        }
+      } else {
+        console.warn(`Webhook Email Warning: Could not send admin notification for Booking ID ${bookingId}. TEAM_EMAIL_ADDRESS not set or availability details missing.`);
       }
 
     } catch (dbError: any) {
-      console.error(`Database error updating booking ${bookingId}: ${dbError.message}`, dbError);
-      // Return a 500 error to Stripe, indicating an internal server error.
-      // Stripe will attempt to resend the webhook for server-side issues.
-      return new Response(`Webhook Database Error: ${dbError.message}`, { status: 500 });
+      console.error(`Webhook Database Error: Failed to update database for Booking ID ${bookingId}: ${dbError.message}`, dbError);
+      return new Response(`Webhook Database Error: ${dbError.message}`, { status: 500 }); // Signal server error to Stripe
     }
   } else {
-    // Log other event types if needed
-    console.log(`Received unhandled event type: ${event.type}`);
+    // Handle other event types if necessary
+    console.log(`Webhook: Received unhandled event type: ${event.type}`);
   }
 
   // Acknowledge receipt of the event to Stripe
