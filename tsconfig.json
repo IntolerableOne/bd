@@ -1,16 +1,22 @@
 {
-  "extends": "astro/tsconfigs/base",
+  "extends": "astro/tsconfigs/strict", // Or "astro/tsconfigs/base" if strict is too much initially
   "compilerOptions": {
-    "baseUrl": "src",
-    "strictNullChecks": true,
-    "types": ["astro/client"],
-    "paths": {
+    "baseUrl": "src", // Already present, good.
+    "strictNullChecks": true, // Already present, good.
+    "paths": { // Already present, good.
       "@lib/*": ["lib/*"],
       "@utils/*": ["utils/*"],
       "@components/*": ["components/*"],
       "@layouts/*": ["layouts/*"],
       "@assets/*": ["assets/*"],
       "@pages/*": ["pages/*"]
-    }
-  }
+    },
+    // Added to ensure Svelte types are picked up correctly by VS Code, etc.
+    "types": ["astro/client", "svelte"],
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["src/**/*", "astro.config.mjs"], // Ensure astro.config.mjs is included if it contains TS
+  "exclude": ["node_modules", "dist"]
 }
