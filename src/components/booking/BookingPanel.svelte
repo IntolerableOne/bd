@@ -12,7 +12,6 @@
   };
   let bookingComplete = false;
   let calendarLoading = true;
-  let bookingId = '';  // To store the booking ID for success page
 
   function nextStep() {
     if (currentStep === 1 && (!userInfo.name || !userInfo.email || !userInfo.phone)) {
@@ -39,11 +38,8 @@
     }
   }
 
-  function handlePaymentComplete(id) {
-    bookingId = id;
+  function handlePaymentComplete() {
     bookingComplete = true;
-    // Redirect to success page
-    window.location.href = `/booking/success?bookingId=${bookingId}`;
   }
 
   $: canContinue = currentStep === 1 ? 
@@ -79,11 +75,6 @@
 
   {#if bookingComplete}
     <div class="text-center py-8 px-4 bg-green-50 rounded-lg">
-      <div class="flex justify-center mb-4">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-        </svg>
-      </div>
       <h2 class="text-2xl font-bold text-green-700 mb-4">Booking Confirmed!</h2>
       <p class="mb-4">Thank you for your booking. You will receive a confirmation email shortly.</p>
       <p class="text-sm text-gray-600">

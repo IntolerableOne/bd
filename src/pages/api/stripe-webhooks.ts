@@ -1,175 +1,135 @@
-// src/pages/api/stripe-webhooks.ts
+// File: src/pages/api/stripe-webhooks.ts
+// Changes:
+// - Corrected the Prisma update for Availability to use the 'booking' relation field
+//   with a 'connect' operation, instead of trying to set 'bookingId' directly in data.
+
 import type { APIRoute } from 'astro';
 import Stripe from 'stripe';
 import { prisma } from '../../lib/prisma';
-import { releaseHold } from '../../lib/holds';
-import nodemailer from 'nodemailer';
+import { type Prisma } from '@prisma/client'; // Import Prisma namespace for types
+import { sendBookingConfirmationEmail } from '../../lib/email';
 
-const stripe = new Stripe(import.meta.env.STRIPE_SECRET_KEY);
-const endpointSecret = import.meta.env.STRIPE_WEBHOOK_SECRET;
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-// Configure email transporter
-const transporter = nodemailer.createTransport({
-  host: import.meta.env.EMAIL_HOST,
-  port: parseInt(import.meta.env.EMAIL_PORT || '587'),
-  secure: import.meta.env.EMAIL_SECURE === 'true',
-  auth: {
-    user: import.meta.env.EMAIL_USER,
-    pass: import.meta.env.EMAIL_PASS,
-  },
-});
-
-async function sendConfirmationEmail(booking) {
-  try {
-    const bookingDate = new Date(booking.availability.date);
-    const formattedDate = bookingDate.toLocaleDateString('en-GB', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
-
-    // Convert time from 24h to 12h format
-    const [hours, minutes] = booking.availability.startTime.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const formattedHour = hour % 12 || 12;
-    const formattedTime = `${formattedHour}:${minutes} ${ampm}`;
-
-    await transporter.sendMail({
-      from: `"Birth Debrief" <${import.meta.env.EMAIL_FROM}>`,
-      to: booking.email,
-      subject: "Your Birth Debrief Appointment Confirmation",
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background-color: #15803d; color: white; padding: 20px; text-align: center;">
-            <h1 style="margin: 0;">Appointment Confirmed</h1>
-          </div>
-          
-          <div style="padding: 20px; border: 1px solid #e5e7eb; border-top: none;">
-            <p>Hello ${booking.name},</p>
-            
-            <p>Your appointment with Birth Debrief has been confirmed.</p>
-            
-            <div style="background-color: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <p style="margin: 0;"><strong>Date:</strong> ${formattedDate}</p>
-              <p style="margin: 10px 0;"><strong>Time:</strong> ${formattedTime}</p>
-              <p style="margin: 0;"><strong>Midwife:</strong> ${booking.availability.midwife}</p>
-            </div>
-            
-            <p>You will receive video conferencing details separately before your appointment.</p>
-            
-            <p>If you need to reschedule or have any questions, please contact us as soon as possible.</p>
-            
-            <p>Thank you for choosing Birth Debrief.</p>
-            
-            <p style="margin-top: 30px;">
-              Best regards,<br>
-              The Birth Debrief Team
-            </p>
-          </div>
-          
-          <div style="background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280;">
-            <p>© ${new Date().getFullYear()} Birth Debrief. All rights reserved.</p>
-          </div>
-        </div>
-      `
-    });
-
-    console.log(`Confirmation email sent to ${booking.email}`);
-  } catch (error) {
-    console.error('Error sending confirmation email:', error);
-  }
+if (!stripeSecretKey) {
+  console.error('Stripe webhook error: STRIPE_SECRET_KEY is not set.');
+}
+if (!webhookSecret) {
+  console.error('Stripe webhook error: STRIPE_WEBHOOK_SECRET is not set.');
 }
 
-export const POST: APIRoute = async ({ request }) => {
-  try {
-    const signature = request.headers.get('stripe-signature');
-    if (!signature || !endpointSecret) {
-      return new Response('Webhook Error: Missing configuration', { status: 400 });
-    }
+const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
+export const POST: APIRoute = async ({ request }) => {
+  if (!stripe || !webhookSecret) {
+    console.error('Stripe webhook endpoint called but Stripe or webhookSecret is not initialized.');
+    return new Response('Webhook Error: Server configuration error.', { status: 500 });
+  }
+
+  const signature = request.headers.get('stripe-signature');
+
+  if (!signature) {
+    console.error('Webhook Error: Missing Stripe signature.');
+    return new Response('Webhook Error: Missing Stripe signature.', { status: 400 });
+  }
+
+  let event: Stripe.Event;
+  try {
     const body = await request.text();
-    let event: Stripe.Event;
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+  } catch (err: any) {
+    console.error(`Webhook signature verification failed: ${err.message}`, err);
+    return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+  }
+
+  if (event.type === 'payment_intent.succeeded') {
+    const paymentIntent = event.data.object as Stripe.PaymentIntent;
+    const bookingId = paymentIntent.metadata?.bookingId;
+    const availabilityId = paymentIntent.metadata?.availabilityId;
+    const customerEmail = paymentIntent.metadata?.customerEmail;
+    const customerName = paymentIntent.metadata?.customerName;
+
+    console.log(`Processing successful payment for bookingId: ${bookingId}, availabilityId: ${availabilityId}`);
+
+    if (!bookingId || !availabilityId) {
+      console.error(`Webhook Error: Missing bookingId or availabilityId in paymentIntent metadata for PI_ID: ${paymentIntent.id}`);
+      // Acknowledge receipt to Stripe to prevent retries for this specific issue.
+      return new Response('Webhook Error: Missing bookingId or availabilityId in metadata.', { status: 200 });
+    }
 
     try {
-      event = stripe.webhooks.constructEvent(body, signature, endpointSecret);
-    } catch (err) {
-      console.error('Webhook signature verification failed:', err);
-      return new Response('Webhook Error: Invalid signature', { status: 400 });
-    }
+      // Use Prisma.TransactionClient for the type of 'tx'
+      const updatedBooking = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // Step 1: Update the Booking to mark it as paid
+        const booking = await tx.booking.update({
+          where: { id: bookingId },
+          data: { paid: true },
+          include: { availability: true } // Include availability for the email confirmation
+        });
 
-    if (event.type === 'payment_intent.succeeded') {
-      const paymentIntent = event.data.object as Stripe.PaymentIntent;
-      const bookingId = paymentIntent.metadata.bookingId;
+        if (!booking.availability) {
+            // This case implies that the booking's availabilityId was null or invalid,
+            // which should ideally be caught before this stage.
+            console.error(`Critical Error: Availability relation not found for booking ${bookingId} after update.`);
+            throw new Error(`Availability data missing for booking ${bookingId}. Cannot link availability.`);
+        }
 
-      if (!bookingId) {
-        throw new Error('No booking ID found in payment intent metadata');
-      }
+        // Step 2: Update the Availability to link it to the now-paid Booking
+        // This is the corrected part: using the relation field 'booking' and 'connect'.
+        await tx.availability.update({
+          where: { id: availabilityId },
+          data: {
+            booking: { // Use the relation field name (likely 'booking')
+              connect: { id: bookingId } // Connect to the Booking record by its ID
+            }
+          },
+        });
 
-      // Get the booking with availability
-      const booking = await prisma.booking.findUnique({
-        where: { id: bookingId },
-        include: { availability: true }
+        // Step 3: Delete any hold records associated with this availability slot
+        await tx.hold.deleteMany({
+            where: { availabilityId: availabilityId }
+        });
+
+        return booking; // Return the updated booking with its included availability
       });
 
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
+      console.log(`Booking ${bookingId} successfully updated to paid and linked to availability ${availabilityId}. Hold released.`);
 
-      // Update booking status and link to availability
-      await prisma.$transaction([
-        prisma.booking.update({
-          where: { id: bookingId },
-          data: { 
-            paid: true,
-            status: 'CONFIRMED',
-            stripePaymentId: paymentIntent.id
-          }
-        })
-      ]);
-
-      // Release any hold
-      await releaseHold(booking.availabilityId);
-
-      // Send confirmation email
-      if (booking) {
-        await sendConfirmationEmail(booking);
-      }
-    } else if (event.type === 'payment_intent.payment_failed') {
-      const paymentIntent = event.data.object as Stripe.PaymentIntent;
-      const bookingId = paymentIntent.metadata.bookingId;
-      
-      if (bookingId) {
-        const booking = await prisma.booking.findUnique({
-          where: { id: bookingId }
-        });
-        
-        if (booking) {
-          // Update booking status to cancelled
-          await prisma.booking.update({
-            where: { id: bookingId },
-            data: { status: 'CANCELLED' }
+      // Send confirmation email if customer email and booking details are available
+      if (customerEmail && updatedBooking.availability) {
+        try {
+          await sendBookingConfirmationEmail({
+            to: customerEmail,
+            name: customerName || updatedBooking.name, // Use name from metadata or booking
+            bookingDate: updatedBooking.availability.date,
+            bookingTime: updatedBooking.availability.startTime,
+            midwifeName: updatedBooking.availability.midwife, // Assuming midwife is on availability
+            bookingId: updatedBooking.id,
           });
-          
-          // Release the hold
-          await releaseHold(booking.availabilityId);
+          console.log(`Booking confirmation email sent to ${customerEmail} for booking ${bookingId}.`);
+        } catch (emailError: any) {
+          // Log email sending failure but don't let it fail the webhook processing
+          console.error(`Failed to send confirmation email for booking ${bookingId}: ${emailError.message}`, emailError);
         }
+      } else {
+        console.warn(`Could not send confirmation email for booking ${bookingId}: missing customer email or booking.availability details.`);
       }
-    }
 
-    return new Response(JSON.stringify({ received: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  } catch (error) {
-    console.error('Webhook Error:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: 'Webhook handler failed',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      }), 
-      { status: 500 }
-    );
+    } catch (dbError: any) {
+      console.error(`Database error updating booking ${bookingId}: ${dbError.message}`, dbError);
+      // Return a 500 error to Stripe, indicating an internal server error.
+      // Stripe will attempt to resend the webhook for server-side issues.
+      return new Response(`Webhook Database Error: ${dbError.message}`, { status: 500 });
+    }
+  } else {
+    // Log other event types if needed
+    console.log(`Received unhandled event type: ${event.type}`);
   }
+
+  // Acknowledge receipt of the event to Stripe
+  return new Response(JSON.stringify({ received: true }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 };

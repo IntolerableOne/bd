@@ -1,79 +1,221 @@
 ---
+// File: src/pages/faq.astro
+// Purpose: Displays Frequently Asked Questions as fully static HTML content.
+// This version hardcodes all FAQ HTML to eliminate any template parsing issues.
+
 import Layout from "@layouts/Layout.astro";
 import Container from "@components/container.astro";
 import Sectionhead from "@components/sectionhead.astro";
 import Cta from "@components/cta.astro";
+
+// No frontmatter data needed for FAQs as they are fully static in the template below.
 ---
 
 <Layout title="Frequently Asked Questions">
   <Container>
     <Sectionhead>
       <Fragment slot="title">Frequently Asked Questions</Fragment>
-      <Fragment slot="desc">Unsure about something? Use the links below to find answers to our most frequently asked questions.</Fragment>
+      <Fragment slot="desc">
+        Unsure about something? Find answers to our most frequently asked questions below.
+      </Fragment>
     </Sectionhead>
 
-    <div class="flex flex-col divide-y gap-3 mt-16 divide-green-700">
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">What is birth debriefing?</summary>
-        <div class="px-4 pb-4">
-          <p>At birthdebrief.com, a birth debrief is a 60-minute client-led session to discuss your perinatal experiences. It’s not limited to the birth itself; you can explore any part of your reproductive journey. This process helps in understanding, processing, and coming to terms with your experience.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">Who can benefit from birth debriefing</summary>
-        <div class="px-4 pb-4">
-          <p>Anyone on the journey to parenthood can benefit from birth debriefing/reflection, including those facing fertility issues, pregnancy loss, birth trauma, maternity care experiences, or neonatal challenges. At birthdebrief.com, we recognise the significant impact on partners and birthing partners, offering debriefs for individuals or couples to provide a safe space for discussing their experiences.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">How can I schedule a birth debriefing session?</summary>
-        <div class="px-4 pb-4">
-          <p>You can schedule a birth debriefing session by clicking the "Book Appointment" button at the bottom of this page. We offer online video consultations, allowing you to conduct your birth debriefing in the comfort and safety of your own home.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">What topics are covered during a birth debriefing session?</summary>
-        <div class="px-4 pb-4">
-          <p>At birthdebrief.com, you decide the topics to discuss during your birth debrief session to ensure you get the most out of it. You can cover any aspect of your perinatal experience, including pregnancy, birth, postnatal care, and more.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">Do I need my hospital notes?</summary>
-        <div class="px-4 pb-4">
-          <p>No, you don't need your hospital notes for a birth debrief session. However, if you would like us to guide you through the events and medical terminology, having them can be helpful.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">What are the limitations of a birth debrief?</summary>
-        <div class="px-4 pb-4">
-          <p>At birthdebrief.com, our trained midwives provide a safe, trauma-informed space for reflection. However, we do not offer therapy or counselling. Depending on your needs, we may signpost relevant support services. Additionally, we cannot comment on the clinical management or decision-making of other healthcare professionals.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">Can I have a birth debrief if my experience was years ago?</summary>
-        <div class="px-4 pb-4">
-          <p>Yes, there is no time limit for accessing care from birthdebrief.com. You can have a birth debrief regardless of how much time has passed since your experience.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">Is birth debriefing helpful for trauma related to childbirth or my reproductive journey?</summary>
-        <div class="px-4 pb-4">
-          <p>Yes, birth debriefing can be especially beneficial for those who have experienced a traumatic birth or related event. It provides a safe space to discuss and understand the experience, which is crucial for emotional recovery. We can screen for the impact of reproductive trauma and signpost additional support as needed.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">What qualifications do you have?</summary>
-        <div class="px-4 pb-4">
-          <p>At birthdebrief.com, Natalie and Clare are practicing NHS midwives registered with the Nursing and Midwifery Council. They hold midwifery degrees and advanced qualifications in perinatal mental health. Both are accredited trainers in perinatal mental health and have extensive training in the emotional wellbeing of women and their families.</p>
-        </div>
-      </details>
-      <details>
-        <summary class=" text-lg py-2 outline-none cursor-pointer focus:underline">How long is a session and what are the costs?</summary>
-        <div class="px-4 pb-4">
-          <p>A single, 1-hour session costs £100, and can be booked right now on this page by clicking the 'Book Appointment' button.</p>
-        </div>
-      </details>
+    <div class="mt-12 md:mt-16 max-w-3xl mx-auto">
+      <div class="divide-y divide-gray-200 border-t border-b border-gray-200 rounded-md shadow-sm bg-white">
+        {/* FAQ 1 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>What is birth debriefing?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>At birthdebrief.com, a birth debrief is a 60-minute client-led session to discuss your perinatal experiences. It’s not limited to the birth itself; you can explore any part of your reproductive journey. This process helps in understanding, processing, and coming to terms with your experience.</p>
+          </div>
+        </details>
+
+        {/* FAQ 2 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>Who can benefit from birth debriefing?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>Anyone on the journey to parenthood can benefit from birth debriefing/reflection, including those facing fertility issues, pregnancy loss, birth trauma, maternity care experiences, or neonatal challenges. At birthdebrief.com, we recognise the significant impact on partners and birthing partners, offering debriefs for individuals or couples to provide a safe space for discussing their experiences.</p>
+          </div>
+        </details>
+
+        {/* FAQ 3 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>How can I schedule a birth debriefing session?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>You can schedule a birth debriefing session by clicking the "Book Appointment" button on our website. We offer online video consultations, allowing you to conduct your birth debriefing in the comfort and safety of your own home.</p>
+          </div>
+        </details>
+
+        {/* FAQ 4 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>What topics are covered during a birth debriefing session?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>At birthdebrief.com, you decide the topics to discuss during your birth debrief session to ensure you get the most out of it. You can cover any aspect of your perinatal experience, including pregnancy, birth, postnatal care, and more.</p>
+          </div>
+        </details>
+
+        {/* FAQ 5 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>Do I need my hospital notes?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>No, you don't need your hospital notes for a birth debrief session. However, if you would like us to guide you through the events and medical terminology, having them can be helpful.</p>
+          </div>
+        </details>
+
+        {/* FAQ 6 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>What are the limitations of a birth debrief?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>At birthdebrief.com, our trained midwives provide a safe, trauma-informed space for reflection. However, we do not offer therapy or counselling. Depending on your needs, we may signpost relevant support services. Additionally, we cannot comment on the clinical management or decision-making of other healthcare professionals.</p>
+          </div>
+        </details>
+
+        {/* FAQ 7 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>Can I have a birth debrief if my experience was years ago?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>Yes, there is no time limit for accessing care from birthdebrief.com. You can have a birth debrief regardless of how much time has passed since your experience.</p>
+          </div>
+        </details>
+
+        {/* FAQ 8 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>Is birth debriefing helpful for trauma related to childbirth or my reproductive journey?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>Yes, birth debriefing can be especially beneficial for those who have experienced a traumatic birth or related event. It provides a safe space to discuss and understand the experience, which is crucial for emotional recovery. We can screen for the impact of reproductive trauma and signpost additional support as needed.</p>
+          </div>
+        </details>
+
+        {/* FAQ 9 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>What qualifications do you have?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>At birthdebrief.com, Natalie and Clare are practicing NHS midwives registered with the Nursing and Midwifery Council. They hold midwifery degrees and advanced qualifications in perinatal mental health. Both are accredited trainers in perinatal mental health and have extensive training in the emotional wellbeing of women and their families.</p>
+          </div>
+        </details>
+
+        {/* FAQ 10 */}
+        <details class="group p-4" name="faq-accordion">
+          <summary class="flex justify-between items-center font-medium text-lg text-gray-800 cursor-pointer list-none hover:text-green-700 transition-colors group-open:text-green-700 group-open:pb-2">
+            <span>How long is a session and what are the costs?</span>
+            <span class="text-green-700 transform transition-transform duration-200 group-open:rotate-[135deg]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+          </summary>
+          <div class="text-gray-600 leading-relaxed pt-3 mt-2 border-t border-gray-100 animate-fadeIn">
+            <p>A single, 1-hour session costs £100, and can be booked right now on this page by clicking the 'Book Appointment' button.</p>
+          </div>
+        </details>
+        {/* Add more FAQs here by copying the <details>...</details> block if needed */}
+      </div>
+      {/* Removed the {:else} block as we are not dynamically checking faqs.length anymore for rendering */}
     </div>
-  <Cta />
+    <Cta />
   </Container>
 </Layout>
+
+<style>
+  /* Remove default summary marker (arrow/triangle) */
+  details > summary {
+    list-style: none;
+  }
+  details > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* Animation for the content reveal */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+
+  /* Styling for the details summary icon transition */
+  details summary .feather-plus {
+    transition: transform 0.2s ease-in-out;
+  }
+  /* The rotate-[135deg] class is applied directly via group-open, so no extra CSS needed here for rotation */
+</style>

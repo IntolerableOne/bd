@@ -1,12 +1,32 @@
 ---
+// File: src/components/navbar/dropdown.astro
+// Changes: Added explicit type for the 'item' parameter in the map function.
+
 import { Dropdown as DropdownContainer, DropdownItems } from "astro-navbar";
+
+// Define an interface for the child item structure
+interface DropdownItem {
+  path: string;
+  title: string;
+}
+
+// Define props for the component
+export interface Props {
+  title: string;
+  lastItem?: boolean;
+  children: DropdownItem[]; // Use the defined interface here
+}
+
 const { title, lastItem, children } = Astro.props;
 ---
 
 <li class="relative">
   <DropdownContainer class="group">
     <button
-      class="flex items-center gap-1 w-full lg:w-auto lg:px-3 py-2 text-gray-600 hover:text-gray-900">
+      class="flex items-center gap-1 w-full lg:w-auto lg:px-3 py-2 text-gray-600 hover:text-gray-900"
+      aria-haspopup="true"
+      aria-expanded="false"
+    >
       <span>{title}</span>
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -14,7 +34,9 @@ const { title, lastItem, children } = Astro.props;
         viewBox="0 0 24 24"
         stroke-width="3"
         stroke="currentColor"
-        class="w-3 h-3 mt-0.5 group-open:rotate-180">
+        class="w-3 h-3 mt-0.5 group-open:rotate-180 transition-transform duration-150"
+        aria-hidden="true"
+      >
         <path
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -28,14 +50,20 @@ const { title, lastItem, children } = Astro.props;
           lastItem
             ? "lg:right-0 origin-top-right"
             : "lg:left-0 origin-top-left",
-        ]}>
+        ]}
+        role="menu"
+      >
         <div
-          class="px-3 lg:py-2 lg:bg-white lg:rounded-md lg:shadow lg:border flex flex-col">
+          class="px-3 lg:py-2 lg:bg-white lg:rounded-md lg:shadow-lg lg:border lg:border-gray-200 flex flex-col"
+        >
           {
-            children.map((item) => (
+            // Added type 'DropdownItem' for 'item'
+            children.map((item: DropdownItem) => (
               <a
                 href={item.path}
-                class="py-1 text-gray-600 hover:text-gray-900">
+                class="py-2 px-1 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors duration-150 text-sm"
+                role="menuitem"
+              >
                 {item.title}
               </a>
             ))
