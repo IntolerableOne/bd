@@ -1,0 +1,97 @@
+---
+import Layout from "@layouts/Layout.astro";
+import Container from "@components/container.astro";
+import { Icon } from "astro-icon";
+import { prisma } from '../../lib/prisma';
+
+interface Booking {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  availability: {
+    date: Date;
+    startTime: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const bookingId = Astro.url.searchParams.get('bookingId');
+let booking: Booking | null = null;
+let error: string | null = null;
+
+if (bookingId) {
+  try {
+    const result = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        availability: {
+          select: {
+            date: true,
+            startTime: true
+          }
+        }
+      }
+    });
+    
+    if (result) {
+      booking = {
+        ...result,
+        availability: {
+          date: result.availability?.date ?? new Date(),
+          startTime: result.availability?.startTime ?? ''
+        }
+      };
+    } else {
+      error = `Booking ${bookingId} not found`;
+    }
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Failed to fetch booking details';
+  }
+} else {
+  error = 'Missing booking ID in URL parameters';
+}
+---
+<Layout title="Payment Successful">
+  <Container>
+    <div class="max-w-xl mx-auto py-16 text-center">
+      <div class="mb-8">
+        <div class="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+          <Icon name="mdi:check" class="w-8 h-8 text-green-700" />
+        </div>
+        <h1 class="text-4xl font-bold mb-4">Payment Successful</h1>
+        
+        {error ? (
+          <div class="bg-red-50 text-red-700 p-4 rounded-lg">
+            <p class="font-medium">Error: {error}</p>
+            <p class="mt-2">Please contact support with your booking reference.</p>
+          </div>
+        ) : booking ? (
+          <>
+            <p class="text-lg text-gray-600 mb-8">
+              Thank you for booking with Birth Debrief. We'll be in touch shortly 
+              with your video consultation details.
+            </p>
+            <div class="mt-8 bg-green-50 p-6 rounded-lg">
+              <h3 class="font-semibold mb-4">Booking Details</h3>
+              <p>Date: {new Date(booking.availability.date).toLocaleDateString('en-GB')}</p>
+              <p>Time: {booking.availability.startTime}</p>
+              <p class="mt-4">Confirmation sent to: {booking.email}</p>
+              <p class="mt-2 text-sm text-gray-600">
+                Booking ID: {bookingId}
+              </p>
+            </div>
+          </>
+        ) : null}
+      </div>
+      
+      <a
+        href="/"
+        class="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-700 hover:bg-green-800 mt-8"
+      >
+        Return to Homepage
+      </a>
+    </div>
+  </Container>
+</Layout>

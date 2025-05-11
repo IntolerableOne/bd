@@ -1,0 +1,71 @@
+---
+import { SEO } from "astro-seo";
+import Footer from "@components/footer.astro";
+import Navbar from "@components/navbar/navbar.astro";
+
+export interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title,
+  description = "Pregnancy & Postnatal Video Consultations | birthdebrief.com",
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site).toString();
+const socialImage = new URL("/opengraph.jpg", Astro.site).toString();
+
+const makeTitle = title ? `${title} | birthdebrief.com` : description;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" href="/fonts/inter-variable.woff2" as="font" type="font/woff2" crossorigin="anonymous">
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#15803d" />
+
+    <SEO
+      title={makeTitle}
+      description={description}
+      canonical={canonicalURL}
+      twitter={{
+        creator: "@birthdebrief",
+        site: "@birthdebrief",
+        card: "summary_large_image",
+      }}
+      openGraph={{
+        basic: {
+          url: canonicalURL,
+          type: "website",
+          title: makeTitle,
+          image: socialImage,
+        },
+        image: {
+          alt: "Birthdebrief.com Homepage Screenshot",
+        },
+      }}
+    />
+  </head>
+  <body class="bg-emerald-100 text-slate-900">
+    <Navbar />
+    <slot />
+    <Footer />
+    <style is:global>
+      @font-face {
+        font-family: "Inter Variable";
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: swap;
+        src: url("/fonts/inter-variable.woff2") format("woff2");
+      }
+      img {
+        content-visibility: auto;
+      }
+    </style>
+  </body>
+</html>
