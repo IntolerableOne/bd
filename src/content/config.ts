@@ -1,6 +1,5 @@
 // File: src/content/config.ts
 // Purpose: Defines content collections for Astro.
-// FAQs are configured as a single data entry (e.g., faq.json).
 
 import { z, defineCollection } from 'astro:content';
 
@@ -20,20 +19,22 @@ const teamCollection = defineCollection({
   }),
 });
 
-// Define the 'faq' collection as a single data entry (e.g., a JSON or YAML file)
-// This file will contain an array of all FAQ items.
+// REMOVE THE 'faqCollection' DEFINITION if you are not using it
+/*
 const faqCollection = defineCollection({
-  type: 'data', // Use 'data' for JSON/YAML files
-  schema: z.array( // The top-level schema is an array of FAQ objects
+  type: 'data',
+  schema: z.array(
     z.object({
       question: z.string(),
       answer: z.string(),
-      order: z.number(), // Used for sorting FAQs
+      order: z.number(),
     })
-  ).nonempty(), // Ensure the array is not empty if a faq.json file exists
+  ).nonempty(),
 });
+*/
 
 export const collections = {
   'team': teamCollection,
-  'faq': faqCollection, // 'faq' will now point to data files (e.g., faq.json)
+  // REMOVE 'faq' from the exported collections if you removed its definition
+  // 'faq': faqCollection,
 };

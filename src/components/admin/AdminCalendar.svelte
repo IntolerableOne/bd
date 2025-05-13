@@ -1,10 +1,9 @@
-<!-- src/components/admin/AdminCalendar.svelte -->
 <script>
   import { createEventDispatcher } from 'svelte';
   const dispatch = createEventDispatcher();
 
   export let selectedMidwife;
-  export let currentDate;
+  // export let currentDate; // REMOVE THIS LINE - It's unused
   export let slots = [];
   export let viewDates = [];
 
@@ -139,7 +138,6 @@
   }
 </script>
 
-<!-- Mobile View -->
 <div class="block md:hidden">
   <div class="grid grid-cols-1 gap-4">
     {#each viewDates as day}
@@ -185,7 +183,6 @@
   </div>
 </div>
 
-<!-- Desktop View -->
 <div class="hidden md:block">
   <div class="grid grid-cols-7 gap-2">
     {#each viewDates as day}
@@ -227,14 +224,13 @@
 </div>
 
 
-<!-- Tooltip -->
 {#if tooltipVisible && tooltipData}
   <div
     class="fixed z-50 bg-white rounded-lg shadow-lg p-3 w-64 transition-opacity duration-150"
     style="
       left: {tooltipPosition.x}px;
       top: {tooltipPosition.y}px;
-      transform: translate(-50%, -100%);
+      transform: translate(-50%, {window.innerWidth < 768 ? '10px' : '-100%'}); /* Adjusted for mobile */
     "
   >
     <div class="flex flex-col space-y-1">
@@ -257,8 +253,15 @@
 {/if}
 
 <style>
-  /* Prevent tooltip from getting cut off */
+  /* Prevent tooltip from getting cut off if body tries to scroll x */
   :global(body) {
     overflow-x: hidden;
   }
+
+  /* REMOVE THE EMPTY RULESETS THAT WERE HERE: */
+  /* [style*="transform: translate(-50%, -100%)"] { ... }
+  @media (max-width: 767px) {
+    [style*="transform: translate(-50%, 10px)"] { ... }
+  }
+  */
 </style>

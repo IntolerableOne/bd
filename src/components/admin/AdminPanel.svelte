@@ -8,13 +8,12 @@
   let email = '';
   let password = '';
   let authError = '';
-  let dataLoadError = ''; // For displaying errors related to loading slots/bookings
+  let dataLoadError = ''; 
 
-  // Admin panel state
   let selectedMidwife = 'clare';
   let slots = [];
   let bookings = [];
-  let currentDate = new Date();
+  let currentDate = new Date(); 
   let earnings = {
     monthly: {},
     yearly: 0
@@ -23,18 +22,16 @@
     slots: false,
     bookings: false
   };
-  let viewDates = []; // This will be calculated based on currentDate
+  let viewDates = []; 
   let searchTerm = '';
-  // let filterStatus = 'all'; // filterStatus was defined but not used in BookingsTable props
   let filterMidwife = 'all';
-  let filterDateRange = 'all'; // Corresponds to 'This Week', 'This Month' etc.
+  let filterDateRange = 'all';
 
   function getWeekDates(date) {
     const dates = [];
     const start = new Date(date);
-    // Adjust to start the week on Monday (day 1) instead of Sunday (day 0)
-    const dayOfWeek = start.getDay(); // 0 (Sun) to 6 (Sat)
-    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // if Sunday, go back 6 days, else go back to Monday
+    const dayOfWeek = start.getDay();
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     start.setDate(start.getDate() + diffToMonday);
     start.setHours(0, 0, 0, 0);
 
@@ -46,29 +43,24 @@
     return dates;
   }
 
-  // Initialize viewDates reactively
   $: viewDates = getWeekDates(currentDate);
 
   async function handleLogin() {
     authError = '';
-    dataLoadError = ''; // Clear previous data load errors
+    dataLoadError = '';
     try {
       const response = await fetch('/api/admin/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-
       const data = await response.json();
-
       if (response.ok && data.token) {
         localStorage.setItem('adminToken', data.token);
         isAuthenticated = true;
-        email = ''; // Clear form
-        password = ''; // Clear form
-        await loadData(); // Load data after successful login
+        email = ''; 
+        password = ''; 
+        await loadData(); 
       } else {
         authError = data.error || 'Login failed. Please check your credentials.';
       }
@@ -81,7 +73,6 @@
   function handleLogout() {
     localStorage.removeItem('adminToken');
     isAuthenticated = false;
-    // Clear sensitive data
     slots = [];
     bookings = [];
     earnings = { monthly: {}, yearly: 0 };
@@ -90,22 +81,33 @@
   }
 
   async function loadData() {
-    if (!isAuthenticated) return; // Should not happen if called correctly
+    if (!isAuthenticated) return;
 
     loading.slots = true;
     loading.bookings = true;
-    dataLoadError = ''; // Clear previous errors
+    // dataLoadError = ''; // Keep previous specific error if one occurred, or clear if desired
+    
+    let availabilityError = null;
+    let bookingsError = null;
 
     try {
-      // Fetch in parallel
-      await Promise.all([
-        loadAvailability(),
-        loadBookings()
+      await Promise.allSettled([ // Use allSettled to capture individual errors
+        loadAvailability().catch(e => { availabilityError = e.message || 'Failed to load availability slots.'; }),
+        loadBookings().catch(e => { bookingsError = e.message || 'Failed to load booking data.'; })
       ]);
-    } catch (error) {
-      // Errors from loadAvailability/loadBookings will set dataLoadError
+
+      if (availabilityError && bookingsError) {
+        dataLoadError = `Failed to load availability (${availabilityError}) and bookings (${bookingsError}).`;
+      } else if (availabilityError) {
+        dataLoadError = availabilityError;
+      } else if (bookingsError) {
+        dataLoadError = bookingsError;
+      } else {
+        dataLoadError = ''; // Clear if both succeed
+      }
+
+    } catch (error) { // This catch might not be strictly needed with allSettled if individual errors are handled
       console.error('Error loading admin data:', error);
-      // dataLoadError might already be set by individual functions
       if (!dataLoadError) dataLoadError = 'An unexpected error occurred while loading admin data.';
     } finally {
       loading.slots = false;
@@ -114,39 +116,46 @@
   }
 
   async function loadAvailability() {
+    // Removed redundant 'dataLoadError = '';' here, handled by loadData
     try {
       const token = localStorage.getItem('adminToken');
       if (!token) throw new Error('Admin token not found.');
 
       const response = await fetch('/api/availability', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) {
+        if (response.status === 401) { // Token expired or invalid
+          handleLogout(); // Log out user
+          authError = 'Your session has expired. Please log in again.'; // Set authError
+          throw new Error('Session expired'); // Prevent further processing in this function
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to load availability (status: ${response.status})`);
       }
       slots = await response.json();
     } catch (error) {
       console.error('Error loading availability:', error);
-      dataLoadError = error.message || 'Failed to load availability slots.';
-      slots = []; // Reset or keep stale data? Resetting is safer.
-      // throw error; // Re-throw to be caught by loadData if needed
+      slots = []; 
+      throw error; // Re-throw to be caught by loadData and set dataLoadError
     }
   }
 
   async function loadBookings() {
+    // Removed redundant 'dataLoadError = '';'
     try {
       const token = localStorage.getItem('adminToken');
       if (!token) throw new Error('Admin token not found.');
 
       const response = await fetch('/api/booking', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) {
+        if (response.status === 401) { // Token expired or invalid
+          handleLogout();
+          authError = 'Your session has expired. Please log in again.';
+          throw new Error('Session expired');
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to load bookings (status: ${response.status})`);
       }
@@ -155,21 +164,21 @@
       earnings = data.earnings;
     } catch (error) {
       console.error('Error loading bookings:', error);
-      dataLoadError = error.message || 'Failed to load booking data.';
-      bookings = []; // Reset
-      earnings = { monthly: {}, yearly: 0 }; // Reset
-      // throw error; // Re-throw
+      bookings = []; 
+      earnings = { monthly: {}, yearly: 0 }; 
+      throw error; // Re-throw
     }
   }
 
   async function handleAddSlot(event) {
     const { day, timeSlot } = event.detail;
-    dataLoadError = ''; // Clear previous errors
+    dataLoadError = ''; 
     try {
       const token = localStorage.getItem('adminToken');
       if (!token) {
-          dataLoadError = "Authentication error. Please log in again.";
-          return;
+        dataLoadError = "Authentication error. Please log in again.";
+        if (!isAuthenticated) handleLogout(); // Ensure logged out if token disappears mid-session
+        return;
       }
       const response = await fetch('/api/availability', {
         method: 'POST',
@@ -178,7 +187,7 @@
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          date: day.toISOString(), // Send as ISO string
+          date: day.toISOString(), 
           startTime: timeSlot.start,
           endTime: timeSlot.end,
           midwife: selectedMidwife
@@ -186,101 +195,114 @@
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+            handleLogout();
+            authError = 'Your session has expired. Please log in again.';
+            return; // Stop further processing
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to add slot (status: ${response.status})`);
       }
-      await loadAvailability(); // Refresh slots list
+      await loadAvailability(); 
     } catch (error) {
       console.error('Error adding slot:', error);
-      dataLoadError = error.message || 'Error adding slot. Please try again.';
+      if (error.message !== 'Session expired') { // Don't overwrite session expired message
+          dataLoadError = error.message || 'Error adding slot. Please try again.';
+      }
     }
   }
 
   async function handleRemoveSlot(event) {
-    const slotToRemove = event.detail; // slotToRemove should have an ID
+    const slotToRemove = event.detail; 
     if (!slotToRemove || !slotToRemove.id) {
         dataLoadError = "Cannot remove slot: Slot ID is missing.";
         return;
     }
-    dataLoadError = ''; // Clear previous errors
+    dataLoadError = ''; 
     try {
       const token = localStorage.getItem('adminToken');
-       if (!token) {
-          dataLoadError = "Authentication error. Please log in again.";
-          return;
+        if (!token) {
+        dataLoadError = "Authentication error. Please log in again.";
+        if (!isAuthenticated) handleLogout();
+        return;
       }
       const response = await fetch(`/api/availability/${slotToRemove.id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+            handleLogout();
+            authError = 'Your session has expired. Please log in again.';
+            return; 
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to remove slot (status: ${response.status})`);
       }
-      await loadAvailability(); // Refresh slots list
+      await loadAvailability(); 
     } catch (error) {
       console.error('Error removing slot:', error);
-      dataLoadError = error.message || 'Error removing slot. Please try again.';
+      if (error.message !== 'Session expired') {
+          dataLoadError = error.message || 'Error removing slot. Please try again.';
+      }
     }
   }
 
   function previousPeriod() {
     const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() - 7); // Go back 7 days
+    newDate.setDate(newDate.getDate() - 7); 
     currentDate = newDate;
-    // viewDates will update reactively
   }
 
   function nextPeriod() {
     const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() + 7); // Go forward 7 days
+    newDate.setDate(newDate.getDate() + 7); 
     currentDate = newDate;
-    // viewDates will update reactively
   }
-
 
   onMount(async () => {
     const token = localStorage.getItem('adminToken');
     if (token) {
-      // Potentially verify token validity here before setting isAuthenticated
-      isAuthenticated = true; // Assuming token presence means authenticated for now
+      // Basic check for token presence. Actual validity checked on API call.
+      // You could add a verifyToken call here if you have a simple client-side check,
+      // but server-side validation is the source of truth.
+      isAuthenticated = true; 
       await loadData();
     }
   });
 
-  // For BookingsTable filtering
   let filteredBookingsForTable = [];
   $: {
     const lowerSearchTerm = searchTerm.toLowerCase();
-    filteredBookingsForTable = bookings.filter(booking => {
+    // Ensure bookings array exists and is iterable
+    const sourceBookings = Array.isArray(bookings) ? bookings : [];
+    filteredBookingsForTable = sourceBookings.filter(booking => {
         const matchesSearch = !searchTerm ||
-            booking.name.toLowerCase().includes(lowerSearchTerm) ||
-            booking.email.toLowerCase().includes(lowerSearchTerm);
+            (booking.name && booking.name.toLowerCase().includes(lowerSearchTerm)) ||
+            (booking.email && booking.email.toLowerCase().includes(lowerSearchTerm));
 
         const matchesMidwife = filterMidwife === 'all' ||
-            booking.availability?.midwife === filterMidwife;
+            (booking.availability && booking.availability.midwife === filterMidwife);
 
         let matchesDate = true;
         if (filterDateRange !== 'all' && booking.availability?.date) {
             const bookingDate = new Date(booking.availability.date);
             const now = new Date();
-            now.setHours(0,0,0,0); // Start of today
+            now.setHours(0,0,0,0); 
 
             switch (filterDateRange) {
                 case 'today':
                     matchesDate = bookingDate.toDateString() === now.toDateString();
                     break;
-                case 'week': // This calendar week (Mon-Sun)
+                case 'week': 
                     const currentWeekStart = getWeekDates(now)[0];
                     const currentWeekEnd = new Date(currentWeekStart);
                     currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
                     currentWeekEnd.setHours(23,59,59,999);
                     matchesDate = bookingDate >= currentWeekStart && bookingDate <= currentWeekEnd;
                     break;
-                case 'month': // This calendar month
+                case 'month': 
                     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
                     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
                     currentMonthEnd.setHours(23,59,59,999);
@@ -289,9 +311,12 @@
             }
         }
         return matchesSearch && matchesMidwife && matchesDate;
-    }).sort((a, b) => new Date(b.availability?.date).getTime() - new Date(a.availability?.date).getTime());
+    }).sort((a, b) => {
+        const dateA = a.availability?.date ? new Date(a.availability.date).getTime() : 0;
+        const dateB = b.availability?.date ? new Date(b.availability.date).getTime() : 0;
+        return dateB - dateA;
+    });
   }
-
 </script>
 
 <div class="w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 bg-gray-50 min-h-screen">
@@ -342,9 +367,13 @@
         </button>
       </div>
 
+      {#if authError && !dataLoadError} <div class="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg border border-red-300" role="alert">
+            <span class="font-medium">Session Error:</span> {authError}
+        </div>
+      {/if}
       {#if dataLoadError}
         <div class="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg border border-red-300" role="alert">
-          <span class="font-medium">Error:</span> {dataLoadError} Please try refreshing or contact support if the issue persists.
+          <span class="font-medium">Data Loading Error:</span> {dataLoadError} Please try refreshing or contact support if the issue persists.
         </div>
       {/if}
 
@@ -392,7 +421,7 @@
         {:else}
             <AdminCalendar
               {selectedMidwife}
-              {currentDate} {slots}
+              {slots} 
               {viewDates}
               on:addSlot={handleAddSlot}
               on:removeSlot={handleRemoveSlot}
