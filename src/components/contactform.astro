@@ -1,135 +1,123 @@
 ---
+// Fixed debug version of contact form
 import Button from "./ui/button.astro";
 ---
 
-<form id="contact-form" class="needs-validation" novalidate>
+<form id="contact-form">
   <div class="mb-5">
+    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
     <input
       type="text"
-      placeholder="Full Name"
-      required
-      class="w-full px-4 py-3 border-2 placeholder:text-gray-800 rounded-md outline-none focus:ring-4 border-gray-300 focus:border-gray-600 ring-gray-100"
+      id="name"
       name="name"
+      required
+      class="w-full px-4 py-3 border-2 rounded-md"
+      placeholder="Your name"
     />
-    <div class="empty-feedback invalid-feedback text-red-400 text-sm mt-1">
-      Please provide your full name.
-    </div>
   </div>
+  
   <div class="mb-5">
-    <label for="email_address" class="sr-only">Email Address</label><input
-      id="email_address"
+    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+    <input
       type="email"
-      placeholder="Email Address"
+      id="email"
       name="email"
       required
-      class="w-full px-4 py-3 border-2 placeholder:text-gray-800 rounded-md outline-none focus:ring-4 border-gray-300 focus:border-gray-600 ring-gray-100"
+      class="w-full px-4 py-3 border-2 rounded-md"
+      placeholder="your@email.com"
     />
-    <div class="empty-feedback text-red-400 text-sm mt-1">
-      Please provide your email address.
-    </div>
-    <div class="invalid-feedback text-red-400 text-sm mt-1">
-      Please provide a valid email address.
-    </div>
   </div>
-  <div class="mb-3">
+  
+  <div class="mb-5">
+    <label for="message" class="block text-sm font-medium text-gray-700 mb-1">Message</label>
     <textarea
+      id="message"
       name="message"
       required
-      placeholder="Your Message"
-      class="w-full px-4 py-3 border-2 placeholder:text-gray-800 rounded-md outline-none h-36 focus:ring-4 border-gray-300 focus:border-gray-600 ring-gray-100"
+      minlength="5"
+      rows="4"
+      class="w-full px-4 py-3 border-2 rounded-md"
+      placeholder="Please describe how we can help you (minimum 5 characters)"
     ></textarea>
-    <div class="empty-feedback invalid-feedback text-red-400 text-sm mt-1">
-      Please enter your message.
-    </div>
+    <div class="text-sm text-gray-500 mt-1">Minimum 5 characters required</div>
   </div>
-  <Button type="submit" size="lg" block>Send Message</Button>
-  <div id="result" class="mt-3 text-center"></div>
+  
+  <button type="submit" class="bg-green-700 text-white px-6 py-3 rounded-lg hover:bg-green-800">
+    Send Message
+  </button>
+  
+  <div id="status" class="mt-4"></div>
 </form>
 
-<style>
-  .invalid-feedback,
-  .empty-feedback {
-    display: none;
-  }
-
-  .was-validated :placeholder-shown:invalid ~ .empty-feedback {
-    display: block;
-  }
-
-  .was-validated :not(:placeholder-shown):invalid ~ .invalid-feedback {
-    display: block;
-  }
-
-  .is-invalid,
-  .was-validated :invalid {
-    border-color: #dc3545;
-  }
-
-  .sending {
-    opacity: 0.7;
-    pointer-events: none;
-  }
-</style>
-
 <script is:inline>
-  const form = document.getElementById("contact-form");
-  const result = document.getElementById("result");
-
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
+  console.log('🔍 Contact form script starting...');
+  
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔍 DOM loaded');
     
-    // Add visual feedback
-    form.classList.add("was-validated", "sending");
-    result.innerHTML = "Sending message...";
-    result.className = "mt-3 text-center text-blue-600";
-
-    if (!form.checkValidity()) {
-      form.querySelectorAll(":invalid")[0].focus();
-      form.classList.remove("sending");
-      result.innerHTML = "";
+    const form = document.getElementById('contact-form');
+    const statusDiv = document.getElementById('status');
+    
+    if (!form) {
+      console.error('❌ Form not found!');
       return;
     }
-
-    const formData = new FormData(form);
-    const data = {
-      name: formData.get("name"),
-      email: formData.get("email"),
-      message: formData.get("message")
-    };
-
-    try {
-      const response = await fetch("/api/contact", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(data),
-      });
-
-      const responseData = await response.json();
-
-      if (response.ok) {
-        result.className = "mt-3 text-center text-green-600";
-        result.innerHTML = "✅ Message sent successfully! We'll get back to you soon.";
-        form.reset();
-        form.classList.remove("was-validated");
-      } else {
-        throw new Error(responseData.error || 'Failed to send message');
-      }
-    } catch (error) {
-      console.error("Contact form error:", error);
-      result.className = "mt-3 text-center text-red-600";
-      result.innerHTML = "❌ Failed to send message. Please try again or email us directly.";
-    } finally {
-      form.classList.remove("sending");
-      
-      // Clear result message after 10 seconds
-      setTimeout(() => {
-        if (result.className.includes("green")) {
-          result.innerHTML = "";
-        }
-      }, 10000);
+    
+    if (!statusDiv) {
+      console.error('❌ Status div not found!');
+      return;
     }
+    
+    console.log('✅ Form and status div found');
+    
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      console.log('🔍 Form submitted!');
+      
+      statusDiv.innerHTML = '🔍 Testing form submission...';
+      statusDiv.className = 'text-blue-600 p-3 bg-blue-50 rounded';
+      
+      const formData = new FormData(form);
+      const data = {
+        name: formData.get('name'),
+        email: formData.get('email'),
+        message: formData.get('message')
+      };
+      
+      console.log('🔍 Form data:', data);
+      
+      try {
+        statusDiv.innerHTML = '📡 Sending to server...';
+        
+        const response = await fetch('/api/contact', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+        
+        console.log('🔍 Response status:', response.status);
+        
+        const result = await response.json();
+        console.log('🔍 Response data:', result);
+        
+        if (response.ok && result.success) {
+          statusDiv.innerHTML = '✅ Message sent successfully!';
+          statusDiv.className = 'text-green-600 p-3 bg-green-50 rounded';
+          form.reset();
+        } else {
+          statusDiv.innerHTML = '❌ Error: ' + (result.error || 'Unknown error');
+          statusDiv.className = 'text-red-600 p-3 bg-red-50 rounded';
+        }
+        
+      } catch (error) {
+        console.error('❌ Network error:', error);
+        statusDiv.innerHTML = '❌ Network error: ' + error.message;
+        statusDiv.className = 'text-red-600 p-3 bg-red-50 rounded';
+      }
+    });
+    
+    console.log('✅ Event listener attached');
   });
 </script>
