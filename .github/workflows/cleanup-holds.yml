@@ -1,0 +1,43 @@
+# .github/workflows/cleanup-holds.yml
+name: Cleanup Expired Holds
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    name: Clean expired booking holds
+    
+    steps:
+      - name: Cleanup holds
+        run: |
+          echo "🧹 Starting hold cleanup..."
+          
+          response=$(curl -s -w "%{http_code}" -X POST \
+            "${{ vars.SITE_URL }}/api/admin/cleanup-holds" \
+            -H "Authorization: Bearer ${{ secrets.CRON_JOB_SECRET }}" \
+            -H "Content-Type: application/json")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n -1)
+          
+          echo "📊 HTTP Status: $http_code"
+          echo "📄 Response: $body"
+          
+          if [ "$http_code" -eq 200 ]; then
+            echo "✅ Cleanup completed successfully"
+          else
+            echo "❌ Cleanup failed"
+            exit 1
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "🚨 Hold cleanup failed at $(date)"
+          # Optional: Add notification logic here (Slack, Discord, etc.)
