@@ -1,69 +1,56 @@
-// File: prisma/schema.prisma
-// Safe schema that matches your actual database structure
+# netlify.toml
+# Netlify configuration for proper deployment
 
-generator client {
-  provider = "prisma-client-js"
-}
+[build]
+  publish = "dist"
+  command = "npm run build"
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+[build.environment]
+  NODE_VERSION = "18"
 
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-}
+# Redirect rules for SPA-like behavior
+[[redirects]]
+  from = "/admin"
+  to = "/admin/"
+  status = 200
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  role      String   @default("admin")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+[[redirects]]
+  from = "/booking"
+  to = "/booking/"
+  status = 200
 
-model Availability {
-  id        String   @id @default(cuid())
-  date      DateTime
-  startTime String
-  endTime   String
-  midwife   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  // Relations
-  booking   Booking?
-  hold      Hold?
-}
+# API routes should not be cached
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
 
-model Booking {
-  id               String        @id @default(cuid())
-  name             String
-  email            String
-  phone            String
-  amount           Int
-  paid             Boolean       @default(false)
-  status           BookingStatus @default(PENDING)
-  stripePaymentId  String?
-  availabilityId   String        @unique
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  
-  // Foreign key relation
-  availability     Availability  @relation(fields: [availabilityId], references: [id])
-}
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
-model Hold {
-  id             String       @id @default(cuid())
-  availabilityId String       @unique
-  expiresAt      DateTime
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  
-  // Foreign key relation
-  availability   Availability @relation(fields: [availabilityId], references: [id])
-}
+# Functions configuration
+[functions]
+  external_node_modules = ["@prisma/client", "prisma"]
+
+# Build processing
+[build.processing]
+  skip_processing = false
+
+[build.processing.css]
+  bundle = true
+  minify = true
+
+[build.processing.js]
+  bundle = true
+  minify = true
+
+[build.processing.html]
+  pretty_urls = true
