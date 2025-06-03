@@ -1,8 +1,8 @@
 // File: src/pages/api/test-email.ts
-// Fixed version with corrected method name
+// Complete fixed version with proper contact form email function
 
 import type { APIRoute } from 'astro';
-import { sendUserBookingConfirmationEmail, sendAdminBookingNotificationEmail, getEmailConfigStatus } from '../../lib/email';
+import { sendUserBookingConfirmationEmail, sendAdminBookingNotificationEmail, sendContactFormEmail, getEmailConfigStatus } from '../../lib/email';
 import { authenticateRequest, createAuthenticatedResponse } from '../../middleware/auth';
 
 export const GET: APIRoute = async ({ request }) => {
@@ -32,6 +32,7 @@ export const GET: APIRoute = async ({ request }) => {
     });
 
   } catch (error: any) {
+    console.error('Error in test-email GET:', error);
     return new Response(JSON.stringify({
       error: 'Failed to check email configuration',
       details: error.message
@@ -50,25 +51,39 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
-    const { testType, recipientEmail } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const { testType, recipientEmail } = body;
     
+    if (!testType) {
+      return new Response(JSON.stringify({
+        error: 'testType is required',
+        validTypes: ['contact-form', 'booking-confirmation', 'admin-notification', 'all']
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     const testResults: any = {
       timestamp: new Date().toISOString(),
       testType,
-      recipientEmail
+      recipientEmail: recipientEmail || 'test@example.com'
     };
 
-    if (testType === 'contact-form') {
+    console.log(`Testing email type: ${testType} to ${recipientEmail || 'test@example.com'}`);
+
+    if (testType === 'contact-form' || testType === 'all') {
       // Test contact form email
       try {
         await sendContactFormEmail({
           name: 'Test User',
           email: recipientEmail || 'test@example.com',
-          message: 'This is a test message from the email testing system.',
-          timestamp: new Date().toISOString()
+          message: 'This is a test message from the email testing system. If you receive this, the contact form email functionality is working correctly.'
         });
         testResults.contactForm = { success: true, message: 'Contact form email sent successfully' };
+        console.log('✅ Contact form test email sent');
       } catch (error: any) {
+        console.error('❌ Contact form test failed:', error);
         testResults.contactForm = { success: false, error: error.message };
       }
     }
@@ -85,7 +100,9 @@ export const POST: APIRoute = async ({ request }) => {
           bookingId: 'test-booking-123'
         });
         testResults.userConfirmation = { success: true, message: 'User confirmation email sent successfully' };
+        console.log('✅ User confirmation test email sent');
       } catch (error: any) {
+        console.error('❌ User confirmation test failed:', error);
         testResults.userConfirmation = { success: false, error: error.message };
       }
     }
@@ -114,7 +131,9 @@ export const POST: APIRoute = async ({ request }) => {
           message: `Admin notification emails sent to: ${teamEmails.join(', ')}`,
           recipients: teamEmails
         };
+        console.log('✅ Admin notification test emails sent');
       } catch (error: any) {
+        console.error('❌ Admin notification test failed:', error);
         testResults.adminNotification = { success: false, error: error.message };
       }
     }
@@ -125,80 +144,15 @@ export const POST: APIRoute = async ({ request }) => {
     });
 
   } catch (error: any) {
+    console.error('❌ Email test failed:', error);
     return new Response(JSON.stringify({
       error: 'Email test failed',
       details: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
   }
 };
-
-// Contact form email function
-async function sendContactFormEmail(details: {
-  name: string;
-  email: string;
-  message: string;
-  timestamp: string;
-}) {
-  const { sendAdminBookingNotificationEmail } = await import('../../lib/email');
-  
-  const teamEmails = process.env.TEAM_EMAIL_ADDRESS?.split(',') || ['clare@birthdebrief.com'];
-  
-  for (const email of teamEmails) {
-    // We'll enhance the email lib to support contact form emails
-    // For now, we'll send a modified admin notification
-    await sendContactFormNotification({
-      to: email.trim(),
-      ...details
-    });
-  }
-}
-
-async function sendContactFormNotification(details: {
-  to: string;
-  name: string;
-  email: string;
-  message: string;
-  timestamp: string;
-}) {
-  const nodemailer = await import('nodemailer');
-  
-  // FIXED: Changed createTransporter to createTransport
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST!,
-    port: parseInt(process.env.EMAIL_PORT || "587", 10),
-    secure: process.env.EMAIL_PORT === "465",
-    auth: {
-      user: process.env.EMAIL_USER!,
-      pass: process.env.EMAIL_PASS!,
-    },
-  });
-
-  const emailHtml = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-      <h2 style="color: #15803d;">New Contact Form Message</h2>
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
-        <tr><td style="padding: 8px; font-weight: bold; width: 30%;">Name:</td><td style="padding: 8px;">${details.name}</td></tr>
-        <tr><td style="padding: 8px; font-weight: bold;">Email:</td><td style="padding: 8px;"><a href="mailto:${details.email}">${details.email}</a></td></tr>
-        <tr><td style="padding: 8px; font-weight: bold;">Received:</td><td style="padding: 8px;">${new Date(details.timestamp).toLocaleString('en-GB')}</td></tr>
-      </table>
-      <h3>Message:</h3>
-      <div style="background: #f9f9f9; padding: 15px; border-left: 4px solid #15803d; margin: 10px 0;">
-        ${details.message.replace(/\n/g, '<br>')}
-      </div>
-      <p style="margin-top: 20px; font-size: 0.9em; color: #666;">
-        Please reply directly to <a href="mailto:${details.email}">${details.email}</a>
-      </p>
-    </div>
-  `;
-
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM!,
-    to: details.to,
-    subject: `Contact Form: Message from ${details.name}`,
-    html: emailHtml,
-  });
-}
