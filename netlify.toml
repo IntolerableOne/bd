@@ -1,5 +1,5 @@
 // File: prisma/schema.prisma
-// Add improvements gradually after baseline is stable
+// Safe schema that matches your actual database structure
 
 generator client {
   provider = "prisma-client-js"
@@ -24,9 +24,6 @@ model User {
   role      String   @default("admin")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  // Add indexes for better performance
-  @@index([email])
 }
 
 model Availability {
@@ -41,14 +38,6 @@ model Availability {
   // Relations
   booking   Booking?
   hold      Hold?
-  
-  // Add useful indexes
-  @@index([date])
-  @@index([midwife])
-  @@index([date, midwife])
-  
-  // Add unique constraint to prevent double bookings
-  @@unique([date, startTime, midwife], name: "unique_slot_per_midwife")
 }
 
 model Booking {
@@ -65,13 +54,7 @@ model Booking {
   updatedAt        DateTime      @updatedAt
   
   // Foreign key relation
-  availability     Availability  @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
-  
-  // Add indexes for better queries
-  @@index([email])
-  @@index([paid])
-  @@index([status])
-  @@index([createdAt])
+  availability     Availability  @relation(fields: [availabilityId], references: [id])
 }
 
 model Hold {
@@ -82,8 +65,5 @@ model Hold {
   updatedAt      DateTime     @updatedAt
   
   // Foreign key relation
-  availability   Availability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
-  
-  // Index for efficient cleanup
-  @@index([expiresAt])
+  availability   Availability @relation(fields: [availabilityId], references: [id])
 }

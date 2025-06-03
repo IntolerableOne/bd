@@ -3,7 +3,6 @@
   const dispatch = createEventDispatcher();
 
   export let selectedMidwife;
-  // export let currentDate; // REMOVE THIS LINE - It's unused
   export let slots = [];
   export let viewDates = [];
 
@@ -11,14 +10,21 @@
   let tooltipPosition = { x: 0, y: 0 };
   let tooltipVisible = false;
 
+  // Extended time slots from 09:00 to 22:00
   const timeSlots = [
     { start: '09:00', end: '10:00' },
     { start: '10:00', end: '11:00' },
     { start: '11:00', end: '12:00' },
+    { start: '12:00', end: '13:00' },
     { start: '13:00', end: '14:00' },
     { start: '14:00', end: '15:00' },
     { start: '15:00', end: '16:00' },
-    { start: '16:00', end: '17:00' }
+    { start: '16:00', end: '17:00' },
+    { start: '17:00', end: '18:00' },
+    { start: '18:00', end: '19:00' },
+    { start: '19:00', end: '20:00' },
+    { start: '20:00', end: '21:00' },
+    { start: '21:00', end: '22:00' }
   ];
 
   function isSlotAvailable(day, timeSlot) {
@@ -145,7 +151,7 @@
         <h4 class="text-center font-semibold mb-4">
           {formatDate(day)}
         </h4>
-        <div class="space-y-2">
+        <div class="space-y-2 max-h-96 overflow-y-auto">
           {#each timeSlots as timeSlot}
             {@const slot = isSlotAvailable(day, timeSlot)}
             <button
@@ -186,11 +192,11 @@
 <div class="hidden md:block">
   <div class="grid grid-cols-7 gap-2">
     {#each viewDates as day}
-      <div class="border rounded-lg p-2 min-h-[180px] bg-white">
+      <div class="border rounded-lg p-2 min-h-[400px] bg-white">
         <h4 class="text-center font-semibold mb-2">
           {formatDate(day)}
         </h4>
-        <div class="space-y-1">
+        <div class="space-y-1 max-h-80 overflow-y-auto">
           {#each timeSlots as timeSlot}
             {@const slot = isSlotAvailable(day, timeSlot)}
             <button
@@ -202,10 +208,10 @@
               on:blur={hideTooltip}
               disabled={slot?.disabled || slot?.status === 'booked' || slot?.status === 'held'}>
               <div class="flex justify-between items-center">
-                <span>{timeSlot.start}</span>
+                <span class="text-xs">{timeSlot.start}</span>
                 <span>
                   {#if slot?.disabled}
-                    <span class="text-gray-500 text-xs">Expired</span>
+                    <span class="text-gray-500 text-xs">⚠</span>
                   {:else if slot?.status === 'booked'}
                     <span>🔒</span>
                   {:else if slot?.status === 'held'}
@@ -223,14 +229,13 @@
   </div>
 </div>
 
-
 {#if tooltipVisible && tooltipData}
   <div
     class="fixed z-50 bg-white rounded-lg shadow-lg p-3 w-64 transition-opacity duration-150"
     style="
       left: {tooltipPosition.x}px;
       top: {tooltipPosition.y}px;
-      transform: translate(-50%, {window.innerWidth < 768 ? '10px' : '-100%'}); /* Adjusted for mobile */
+      transform: translate(-50%, {window.innerWidth < 768 ? '10px' : '-100%'});
     "
   >
     <div class="flex flex-col space-y-1">
@@ -257,11 +262,4 @@
   :global(body) {
     overflow-x: hidden;
   }
-
-  /* REMOVE THE EMPTY RULESETS THAT WERE HERE: */
-  /* [style*="transform: translate(-50%, -100%)"] { ... }
-  @media (max-width: 767px) {
-    [style*="transform: translate(-50%, 10px)"] { ... }
-  }
-  */
 </style>

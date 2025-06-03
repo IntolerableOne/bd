@@ -1,81 +1,112 @@
-// File: src/pages/api/booking.ts
-// Purpose: API endpoint to fetch booking data for the admin panel.
-// This version ensures correct Prisma type imports.
-
 import type { APIContext } from 'astro';
 import { prisma } from '../../lib/prisma';
-import { type Prisma } from '@prisma/client'; // Correctly import Prisma namespace for types
+import { type Prisma } from '@prisma/client';
 import { authenticateRequest, createAuthenticatedResponse } from '../../middleware/auth';
 
-// Define a type for the booking object as returned by Prisma, including its relations.
-// This uses Prisma.BookingGetPayload to create a precise type based on the query.
 type BookingWithAvailability = Prisma.BookingGetPayload<{
-  include: { availability: true } // Specify that the 'availability' relation should be included
+  include: { availability: true }
 }>;
 
 export async function GET({ request }: APIContext) {
-  // Authenticate the request to ensure only admin users can access this endpoint
   const adminUser = await authenticateRequest(request);
   if (!adminUser) {
-    return createAuthenticatedResponse({} as any); // Return a 401 Unauthorized response
+    return createAuthenticatedResponse({} as any);
   }
 
   try {
-    // Fetch bookings from the database
-    const bookings: BookingWithAvailability[] = await prisma.booking.findMany({
-      where: {
-        paid: true, // Only retrieve bookings that have been paid for
-      },
+    console.log('📊 Admin requesting booking data...');
+    
+    // Fetch ALL bookings for admin (both paid and unpaid for debugging)
+    const allBookings: BookingWithAvailability[] = await prisma.booking.findMany({
       include: {
-        availability: true, // Include the related availability slot details
+        availability: true,
       },
       orderBy: {
-        availability: { // Order bookings by the date of the availability slot
-            date: 'desc' // Latest bookings first
-        }
+        createdAt: 'desc' // Latest bookings first
       },
     });
 
-    // Initialize an object to store calculated earnings
+    console.log(`📋 Found ${allBookings.length} total bookings`);
+    
+    // Separate paid and unpaid for logging
+    const paidBookings = allBookings.filter(b => b.paid);
+    const unpaidBookings = allBookings.filter(b => !b.paid);
+    
+    console.log(`💳 Paid bookings: ${paidBookings.length}`);
+    console.log(`⏳ Unpaid bookings: ${unpaidBookings.length}`);
+    
+    if (unpaidBookings.length > 0) {
+      console.log('⚠️ Unpaid bookings found (may indicate webhook issues):');
+      unpaidBookings.forEach(booking => {
+        const ageMinutes = Math.floor((new Date().getTime() - new Date(booking.createdAt).getTime()) / (1000 * 60));
+        console.log(`  - ${booking.id}: ${booking.name} (${booking.email}) - Age: ${ageMinutes} minutes`);
+      });
+    }
+
+    // Calculate earnings from paid bookings only
     const earnings = {
-      monthly: {} as Record<string, number>, // Key: "YYYY-MM", Value: amount in pence
-      yearly: 0, // Total amount in pence for the current year
+      monthly: {} as Record<string, number>,
+      yearly: 0,
     };
 
     const currentYear = new Date().getFullYear();
 
-    // Iterate over bookings to calculate earnings
-    bookings.forEach((booking: BookingWithAvailability) => {
-      const amountInPence = Number(booking.amount); // Ensure amount is treated as a number
+    paidBookings.forEach((booking: BookingWithAvailability) => {
+      const amountInPence = Number(booking.amount);
 
-      // Check if the booking is paid, has availability info, and amount is a valid number
-      if (booking.paid && booking.availability && !isNaN(amountInPence)) {
+      if (booking.availability && !isNaN(amountInPence)) {
         const bookingDate = new Date(booking.availability.date);
         const year = bookingDate.getFullYear();
-        const month = bookingDate.getMonth(); // 0-indexed (January is 0)
-        const yearMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`; // Format as YYYY-MM
+        const month = bookingDate.getMonth();
+        const yearMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
 
         // Add to monthly earnings
         earnings.monthly[yearMonthKey] = (earnings.monthly[yearMonthKey] || 0) + amountInPence;
 
-        // Add to yearly earnings if the booking is for the current year
+        // Add to yearly earnings if current year
         if (year === currentYear) {
-            earnings.yearly += amountInPence;
+          earnings.yearly += amountInPence;
         }
       }
     });
 
-    // Return the bookings and calculated earnings
-    return new Response(JSON.stringify({ bookings, earnings }), {
+    console.log(`💰 Total yearly earnings: £${(earnings.yearly / 100).toFixed(2)}`);
+
+    // Return ALL bookings but mark which are paid/unpaid for admin visibility
+    const bookingsWithStatus = allBookings.map(booking => ({
+      ...booking,
+      _debug: {
+        isPaid: booking.paid,
+        ageMinutes: Math.floor((new Date().getTime() - new Date(booking.createdAt).getTime()) / (1000 * 60)),
+        hasAvailability: !!booking.availability
+      }
+    }));
+
+    return new Response(JSON.stringify({ 
+      bookings: bookingsWithStatus, 
+      earnings,
+      _debug: {
+        totalBookings: allBookings.length,
+        paidBookings: paidBookings.length,
+        unpaidBookings: unpaidBookings.length,
+        oldestUnpaidMinutes: unpaidBookings.length > 0 ? Math.max(...unpaidBookings.map(b => 
+          Math.floor((new Date().getTime() - new Date(b.createdAt).getTime()) / (1000 * 60))
+        )) : 0
+      }
+    }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
       },
     });
   } catch (error: any) {
-    console.error('Error fetching bookings:', error);
-    // Return a generic error response if fetching fails
-    return new Response(JSON.stringify({ error: 'Failed to fetch bookings', details: error.message }), {
+    console.error('❌ Error fetching bookings:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to fetch bookings', 
+      details: error.message,
+      bookings: [],
+      earnings: { monthly: {}, yearly: 0 }
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

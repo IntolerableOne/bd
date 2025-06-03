@@ -1,11 +1,9 @@
-// File: src/middleware/auth.ts
-// Changes: Consistent use of import.meta.env for JWT_SECRET.
 
 import jwt from 'jsonwebtoken';
 import type { APIContext } from 'astro';
 
-// JWT Secret from environment variables
-const JWT_SECRET = import.meta.env.JWT_SECRET; // Changed from process.env
+// Change from import.meta.env to process.env for server-side
+const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET) {
   console.warn("JWT_SECRET is not set in environment variables. Authentication middleware may not function correctly.");
@@ -17,7 +15,7 @@ export async function authenticateRequest(request: Request): Promise<jwt.JwtPayl
     return null;
   }
 
-  const token = authHeader.substring(7); // "Bearer ".length
+  const token = authHeader.substring(7);
   if (!token) {
     return null;
   }
@@ -41,7 +39,6 @@ export function createAuthenticatedResponse(_context?: APIContext) {
     status: 401,
     headers: {
       'Content-Type': 'application/json',
-      // 'WWW-Authenticate': 'Bearer realm="api"' // Consider adding for strictness
     }
   });
 }

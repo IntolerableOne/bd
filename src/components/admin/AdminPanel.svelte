@@ -26,6 +26,16 @@
   let searchTerm = '';
   let filterMidwife = 'all';
   let filterDateRange = 'all';
+  let showDebugInfo = false;
+  let debugStats = {
+    totalBookings: 0,
+    paidBookings: 0,
+    unpaidBookings: 0,
+    totalSlots: 0,
+    availableSlots: 0,
+    bookedSlots: 0,
+    heldSlots: 0
+  };
 
   function getWeekDates(date) {
     const dates = [];
@@ -44,6 +54,28 @@
   }
 
   $: viewDates = getWeekDates(currentDate);
+
+  // Calculate debug statistics
+  $: {
+    const allBookingsCount = bookings.length;
+    const paidCount = bookings.filter(b => b.paid).length;
+    const unpaidCount = bookings.filter(b => !b.paid).length;
+    
+    const totalSlotsCount = slots.length;
+    const bookedSlotsCount = slots.filter(s => s.booking).length;
+    const heldSlotsCount = slots.filter(s => s.hold && new Date(s.hold.expiresAt) > new Date()).length;
+    const availableSlotsCount = slots.filter(s => !s.booking && (!s.hold || new Date(s.hold.expiresAt) <= new Date())).length;
+
+    debugStats = {
+      totalBookings: allBookingsCount,
+      paidBookings: paidCount,
+      unpaidBookings: unpaidCount,
+      totalSlots: totalSlotsCount,
+      availableSlots: availableSlotsCount,
+      bookedSlots: bookedSlotsCount,
+      heldSlots: heldSlotsCount
+    };
+  }
 
   async function handleLogin() {
     authError = '';
@@ -80,18 +112,46 @@
     dataLoadError = '';
   }
 
+  async function triggerCleanup() {
+    try {
+      const token = localStorage.getItem('adminToken');
+      if (!token) {
+        dataLoadError = "Authentication required for cleanup operation.";
+        return;
+      }
+
+      const response = await fetch('/api/admin/cleanup-holds', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Cleanup completed:', result);
+        // Reload data to reflect changes
+        await loadData();
+        dataLoadError = `Cleanup completed: ${result.holdsDeleted} holds and ${result.unpaidBookingsDeleted} unpaid bookings removed.`;
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        dataLoadError = `Cleanup failed: ${errorData.error || 'Unknown error'}`;
+      }
+    } catch (error) {
+      console.error('Cleanup request failed:', error);
+      dataLoadError = `Cleanup request failed: ${error.message}`;
+    }
+  }
+
   async function loadData() {
     if (!isAuthenticated) return;
 
     loading.slots = true;
     loading.bookings = true;
-    // dataLoadError = ''; // Keep previous specific error if one occurred, or clear if desired
     
     let availabilityError = null;
     let bookingsError = null;
 
     try {
-      await Promise.allSettled([ // Use allSettled to capture individual errors
+      await Promise.allSettled([
         loadAvailability().catch(e => { availabilityError = e.message || 'Failed to load availability slots.'; }),
         loadBookings().catch(e => { bookingsError = e.message || 'Failed to load booking data.'; })
       ]);
@@ -103,10 +163,10 @@
       } else if (bookingsError) {
         dataLoadError = bookingsError;
       } else {
-        dataLoadError = ''; // Clear if both succeed
+        dataLoadError = '';
       }
 
-    } catch (error) { // This catch might not be strictly needed with allSettled if individual errors are handled
+    } catch (error) {
       console.error('Error loading admin data:', error);
       if (!dataLoadError) dataLoadError = 'An unexpected error occurred while loading admin data.';
     } finally {
@@ -116,7 +176,6 @@
   }
 
   async function loadAvailability() {
-    // Removed redundant 'dataLoadError = '';' here, handled by loadData
     try {
       const token = localStorage.getItem('adminToken');
       if (!token) throw new Error('Admin token not found.');
@@ -125,24 +184,24 @@
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) {
-        if (response.status === 401) { // Token expired or invalid
-          handleLogout(); // Log out user
-          authError = 'Your session has expired. Please log in again.'; // Set authError
-          throw new Error('Session expired'); // Prevent further processing in this function
+        if (response.status === 401) {
+          handleLogout();
+          authError = 'Your session has expired. Please log in again.';
+          throw new Error('Session expired');
         }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to load availability (status: ${response.status})`);
       }
       slots = await response.json();
+      console.log('Loaded slots:', slots.length);
     } catch (error) {
       console.error('Error loading availability:', error);
       slots = []; 
-      throw error; // Re-throw to be caught by loadData and set dataLoadError
+      throw error;
     }
   }
 
   async function loadBookings() {
-    // Removed redundant 'dataLoadError = '';'
     try {
       const token = localStorage.getItem('adminToken');
       if (!token) throw new Error('Admin token not found.');
@@ -151,7 +210,7 @@
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) {
-        if (response.status === 401) { // Token expired or invalid
+        if (response.status === 401) {
           handleLogout();
           authError = 'Your session has expired. Please log in again.';
           throw new Error('Session expired');
@@ -162,11 +221,12 @@
       const data = await response.json();
       bookings = data.bookings;
       earnings = data.earnings;
+      console.log('Loaded bookings:', bookings.length, 'paid:', bookings.filter(b => b.paid).length);
     } catch (error) {
       console.error('Error loading bookings:', error);
       bookings = []; 
       earnings = { monthly: {}, yearly: 0 }; 
-      throw error; // Re-throw
+      throw error;
     }
   }
 
@@ -177,7 +237,7 @@
       const token = localStorage.getItem('adminToken');
       if (!token) {
         dataLoadError = "Authentication error. Please log in again.";
-        if (!isAuthenticated) handleLogout(); // Ensure logged out if token disappears mid-session
+        if (!isAuthenticated) handleLogout();
         return;
       }
       const response = await fetch('/api/availability', {
@@ -198,7 +258,7 @@
         if (response.status === 401) {
             handleLogout();
             authError = 'Your session has expired. Please log in again.';
-            return; // Stop further processing
+            return;
         }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to add slot (status: ${response.status})`);
@@ -206,7 +266,7 @@
       await loadAvailability(); 
     } catch (error) {
       console.error('Error adding slot:', error);
-      if (error.message !== 'Session expired') { // Don't overwrite session expired message
+      if (error.message !== 'Session expired') {
           dataLoadError = error.message || 'Error adding slot. Please try again.';
       }
     }
@@ -264,9 +324,6 @@
   onMount(async () => {
     const token = localStorage.getItem('adminToken');
     if (token) {
-      // Basic check for token presence. Actual validity checked on API call.
-      // You could add a verifyToken call here if you have a simple client-side check,
-      // but server-side validation is the source of truth.
       isAuthenticated = true; 
       await loadData();
     }
@@ -275,7 +332,6 @@
   let filteredBookingsForTable = [];
   $: {
     const lowerSearchTerm = searchTerm.toLowerCase();
-    // Ensure bookings array exists and is iterable
     const sourceBookings = Array.isArray(bookings) ? bookings : [];
     filteredBookingsForTable = sourceBookings.filter(booking => {
         const matchesSearch = !searchTerm ||
@@ -360,20 +416,69 @@
     <div class="space-y-8">
       <div class="flex flex-col md:flex-row justify-between items-center gap-4 pb-4 border-b border-gray-200">
         <h1 class="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
-        <button
-          on:click={handleLogout}
-          class="px-6 py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-          Logout
-        </button>
+        <div class="flex gap-2">
+          <button
+            on:click={() => showDebugInfo = !showDebugInfo}
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+            {showDebugInfo ? 'Hide' : 'Show'} Debug Info
+          </button>
+          <button
+            on:click={triggerCleanup}
+            class="px-4 py-2 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition-colors">
+            Clean Expired Holds
+          </button>
+          <button
+            on:click={handleLogout}
+            class="px-6 py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+            Logout
+          </button>
+        </div>
       </div>
 
-      {#if authError && !dataLoadError} <div class="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg border border-red-300" role="alert">
-            <span class="font-medium">Session Error:</span> {authError}
+      {#if showDebugInfo}
+        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <h3 class="text-lg font-semibold text-blue-800 mb-3">System Debug Information</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div class="bg-white p-3 rounded border">
+              <div class="text-blue-600 font-medium">Total Bookings</div>
+              <div class="text-xl font-bold">{debugStats.totalBookings}</div>
+            </div>
+            <div class="bg-white p-3 rounded border">
+              <div class="text-green-600 font-medium">Paid Bookings</div>
+              <div class="text-xl font-bold text-green-700">{debugStats.paidBookings}</div>
+            </div>
+            <div class="bg-white p-3 rounded border">
+              <div class="text-red-600 font-medium">Unpaid Bookings</div>
+              <div class="text-xl font-bold text-red-700">{debugStats.unpaidBookings}</div>
+            </div>
+            <div class="bg-white p-3 rounded border">
+              <div class="text-gray-600 font-medium">Total Slots</div>
+              <div class="text-xl font-bold">{debugStats.totalSlots}</div>
+            </div>
+            <div class="bg-white p-3 rounded border">
+              <div class="text-green-600 font-medium">Available Slots</div>
+              <div class="text-xl font-bold">{debugStats.availableSlots}</div>
+            </div>
+            <div class="bg-white p-3 rounded border">
+              <div class="text-gray-600 font-medium">Booked Slots</div>
+              <div class="text-xl font-bold">{debugStats.bookedSlots}</div>
+            </div>
+            <div class="bg-white p-3 rounded border">
+              <div class="text-yellow-600 font-medium">Held Slots</div>
+              <div class="text-xl font-bold text-yellow-700">{debugStats.heldSlots}</div>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      {#if authError && !dataLoadError}
+        <div class="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg border border-red-300" role="alert">
+          <span class="font-medium">Session Error:</span> {authError}
         </div>
       {/if}
       {#if dataLoadError}
         <div class="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg border border-red-300" role="alert">
-          <span class="font-medium">Data Loading Error:</span> {dataLoadError} Please try refreshing or contact support if the issue persists.
+          <span class="font-medium">System Message:</span> {dataLoadError}
         </div>
       {/if}
 

@@ -1,69 +1,115 @@
-// File: src/lib/email.ts
-// Purpose: Utility functions for sending booking confirmation and admin notification emails.
-// Ensure nodemailer is installed: npm install nodemailer
-// For types: npm install -D @types/nodemailer
-
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
-// Interface for user booking confirmation details
 interface UserBookingConfirmationDetails {
-  to: string;         // User's email address
-  name: string;       // User's name
+  to: string;
+  name: string;
   bookingDate: Date;
   bookingTime: string;
   midwifeName: string;
   bookingId: string;
 }
 
-// Interface for admin new booking notification details
 interface AdminBookingNotificationDetails {
-  to: string;         // Team's email address
-  userName: string;   // User's name
-  userEmail: string;  // User's email
-  userPhone?: string; // User's phone (optional)
+  to: string;
+  userName: string;
+  userEmail: string;
+  userPhone?: string;
   bookingDate: Date;
   bookingTime: string;
   midwifeName: string;
   bookingId: string;
-  bookingAmount: number; // Amount in pence
+  bookingAmount: number;
 }
 
 let transporter: Transporter | null = null;
+let emailConfigStatus = {
+  configured: false,
+  missingVars: [] as string[]
+};
 
-// Initialize transporter only if environment variables are set
-if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_FROM && process.env.TEAM_EMAIL_ADDRESS) {
-  transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT || "587", 10),
-    secure: process.env.EMAIL_PORT === "465", // true for 465, false for other ports
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    // Optional: Add connection timeout and other settings if needed
-    // connectionTimeout: 5 * 1000, // 5 seconds
-  });
-  console.log("Email transporter configured.");
-} else {
-  console.warn(
-    "Email transporter not fully configured. Missing one or more required environment variables: " +
-    "EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM, TEAM_EMAIL_ADDRESS. " +
-    "Emails will not be sent."
-  );
+// Validate and initialize email configuration
+function validateEmailConfig() {
+  const requiredVars = [
+    'EMAIL_HOST',
+    'EMAIL_USER', 
+    'EMAIL_PASS',
+    'EMAIL_FROM',
+    'TEAM_EMAIL_ADDRESS'
+  ];
+  
+  const missing = requiredVars.filter(varName => !process.env[varName]);
+  
+  if (missing.length > 0) {
+    emailConfigStatus = {
+      configured: false,
+      missingVars: missing
+    };
+    console.warn('❌ Email configuration incomplete. Missing environment variables:', missing.join(', '));
+    console.warn('Required email environment variables:');
+    console.warn('- EMAIL_HOST (e.g., smtp.gmail.com)');
+    console.warn('- EMAIL_PORT (e.g., 587)');
+    console.warn('- EMAIL_USER (your email address)');
+    console.warn('- EMAIL_PASS (your app password, not regular password)');
+    console.warn('- EMAIL_FROM (sender email address)');
+    console.warn('- TEAM_EMAIL_ADDRESS (recipient for admin notifications)');
+    return false;
+  }
+  
+  return true;
 }
 
-/**
- * Sends a booking confirmation email to the user.
- * @param details - The details for the user confirmation email.
- */
+// Initialize transporter
+if (validateEmailConfig()) {
+  try {
+    transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST!,
+      port: parseInt(process.env.EMAIL_PORT || "587", 10),
+      secure: process.env.EMAIL_PORT === "465",
+      auth: {
+        user: process.env.EMAIL_USER!,
+        pass: process.env.EMAIL_PASS!,
+      },
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 5000,     // 5 seconds
+      socketTimeout: 10000,      // 10 seconds
+    });
+    
+    emailConfigStatus.configured = true;
+    console.log('✅ Email transporter configured successfully');
+    
+    // Test the connection
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('❌ Email configuration test failed:', error.message);
+        emailConfigStatus.configured = false;
+      } else {
+        console.log('✅ Email server connection verified');
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ Failed to create email transporter:', error.message);
+    transporter = null;
+    emailConfigStatus.configured = false;
+  }
+}
+
 export async function sendUserBookingConfirmationEmail(details: UserBookingConfirmationDetails): Promise<void> {
-  if (!transporter) {
-    console.error("Email not sent (User Confirmation): Transporter not initialized. Check email configuration in environment variables.");
-    return; // Exit if transporter is not configured
+  if (!transporter || !emailConfigStatus.configured) {
+    const errorMsg = emailConfigStatus.missingVars.length > 0 
+      ? `Email not configured. Missing: ${emailConfigStatus.missingVars.join(', ')}`
+      : 'Email transporter not initialized';
+    console.error('❌ User confirmation email not sent:', errorMsg);
+    return;
   }
 
   const { to, name, bookingDate, bookingTime, midwifeName, bookingId } = details;
+
+  if (!to || !name || !bookingDate || !bookingTime || !midwifeName || !bookingId) {
+    console.error('❌ User confirmation email not sent: Missing required details');
+    return;
+  }
 
   const formattedDate = new Date(bookingDate).toLocaleDateString('en-GB', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
@@ -93,32 +139,38 @@ export async function sendUserBookingConfirmationEmail(details: UserBookingConfi
   `;
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM!, // Assert non-null as checked in transporter init
+    from: process.env.EMAIL_FROM!,
     to: to,
     subject: `Your Birth Debrief Consultation is Confirmed (Booking ID: ${bookingId})`,
     html: emailHtml,
   };
 
   try {
+    console.log('📧 Sending user confirmation email to:', to);
     await transporter.sendMail(mailOptions);
-    console.log(`User booking confirmation email sent to ${to} for Booking ID: ${bookingId}`);
-  } catch (error) {
-    console.error(`Error sending user confirmation email to ${to} for Booking ID: ${bookingId}:`, error);
-    // Do not throw error here to prevent webhook failure, but ensure it's logged.
+    console.log('✅ User booking confirmation email sent successfully to:', to);
+  } catch (error: any) {
+    console.error(`❌ Failed to send user confirmation email to ${to}:`, error.message);
+    console.error('Email details:', { to, bookingId, error: error.code || error.errno });
+    throw error; // Re-throw to let caller handle if needed
   }
 }
 
-/**
- * Sends a new booking notification email to the admin/team.
- * @param details - The details for the admin notification email.
- */
 export async function sendAdminBookingNotificationEmail(details: AdminBookingNotificationDetails): Promise<void> {
-  if (!transporter) {
-    console.error("Email not sent (Admin Notification): Transporter not initialized. Check email configuration.");
-    return; // Exit if transporter is not configured
+  if (!transporter || !emailConfigStatus.configured) {
+    const errorMsg = emailConfigStatus.missingVars.length > 0 
+      ? `Email not configured. Missing: ${emailConfigStatus.missingVars.join(', ')}`
+      : 'Email transporter not initialized';
+    console.error('❌ Admin notification email not sent:', errorMsg);
+    return;
   }
 
   const { to, userName, userEmail, userPhone, bookingDate, bookingTime, midwifeName, bookingId, bookingAmount } = details;
+
+  if (!to || !userName || !userEmail || !bookingDate || !bookingTime || !midwifeName || !bookingId || !bookingAmount) {
+    console.error('❌ Admin notification email not sent: Missing required details');
+    return;
+  }
 
   const formattedDate = new Date(bookingDate).toLocaleDateString('en-GB', {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
@@ -139,26 +191,32 @@ export async function sendAdminBookingNotificationEmail(details: AdminBookingNot
         <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px; font-weight: bold;">Assigned Midwife:</td><td style="padding: 8px;">${midwifeName}</td></tr>
         <tr><td style="padding: 8px; font-weight: bold;">Amount Paid:</td><td style="padding: 8px;">£${amountInPounds}</td></tr>
       </table>
-      <p>Please ensure a Microsoft Teams invite is manually sent to the client for this appointment.</p>
+      <p><strong>Action Required:</strong> Please ensure a Microsoft Teams invite is manually sent to the client for this appointment.</p>
       <p>You can view and manage bookings in the <a href="https://birthdebrief.com/admin">Admin Panel</a>.</p>
-      <p>Thank you.</p>
     </div>
   `;
 
   const mailOptions = {
     from: process.env.EMAIL_FROM!,
-    to: to, // This should be process.env.TEAM_EMAIL_ADDRESS
+    to: to,
     subject: `New Booking Confirmed: ${userName} - ${formattedDate} at ${bookingTime} (ID: ${bookingId})`,
     html: emailHtml,
   };
 
   try {
+    console.log('📧 Sending admin notification email to:', to);
     await transporter.sendMail(mailOptions);
-    console.log(`Admin new booking notification sent to ${to} for Booking ID: ${bookingId}`);
-  } catch (error) {
-    console.error(`Error sending admin notification email to ${to} for Booking ID: ${bookingId}:`, error);
+    console.log('✅ Admin booking notification email sent successfully to:', to);
+  } catch (error: any) {
+    console.error(`❌ Failed to send admin notification email to ${to}:`, error.message);
+    console.error('Email details:', { to, bookingId, error: error.code || error.errno });
+    throw error; // Re-throw to let caller handle if needed
   }
 }
 
-// Ensure the file is treated as a module by TypeScript
+// Export configuration status for debugging
+export function getEmailConfigStatus() {
+  return emailConfigStatus;
+}
+
 export {};
