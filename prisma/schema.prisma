@@ -1,0 +1,89 @@
+// File: prisma/schema.prisma
+// Fresh clean schema with all improvements
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([email])
+  @@index([role])
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  date      DateTime
+  startTime String   // Format: "HH:MM"
+  endTime   String   // Format: "HH:MM"
+  midwife   String   // Either "clare" or "natalie"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  booking   Booking?
+  hold      Hold?
+  
+  // Prevent duplicate slots for same midwife at same time
+  @@unique([date, startTime, midwife], name: "unique_slot_per_midwife")
+  @@index([date])
+  @@index([midwife])
+  @@index([date, midwife])
+}
+
+model Booking {
+  id               String        @id @default(cuid())
+  name             String
+  email            String
+  phone            String
+  amount           Int           // Amount in pence
+  paid             Boolean       @default(false)
+  status           BookingStatus @default(PENDING)
+  stripePaymentId  String?       // Stripe payment intent ID
+  availabilityId   String        @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  
+  // Foreign key relation
+  availability     Availability  @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  
+  // Performance indexes
+  @@index([email])
+  @@index([paid])
+  @@index([status])
+  @@index([createdAt])
+  @@index([stripePaymentId])
+}
+
+model Hold {
+  id             String       @id @default(cuid())
+  availabilityId String       @unique
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  // Foreign key relation
+  availability   Availability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  
+  // Cleanup efficiency indexes
+  @@index([expiresAt])
+  @@index([availabilityId])
+}
