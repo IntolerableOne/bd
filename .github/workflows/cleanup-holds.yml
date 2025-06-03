@@ -1,4 +1,6 @@
-# .github/workflows/cleanup-holds.yml
+# File: .github/workflows/cleanup-holds.yml
+# Fixed GitHub Actions workflow for automated cleanup
+
 name: Cleanup Expired Holds
 
 on:
@@ -17,27 +19,70 @@ jobs:
       - name: Cleanup holds
         run: |
           echo "🧹 Starting hold cleanup..."
+          echo "🌐 Site URL: ${{ vars.SITE_URL }}"
+          echo "🔑 Secret configured: ${{ secrets.CRON_JOB_SECRET != '' }}"
           
+          # Validate required variables
+          if [ -z "${{ vars.SITE_URL }}" ]; then
+            echo "❌ SITE_URL variable not set"
+            echo "Please add SITE_URL to repository variables: https://yourdomain.com"
+            exit 1
+          fi
+          
+          if [ -z "${{ secrets.CRON_JOB_SECRET }}" ]; then
+            echo "❌ CRON_JOB_SECRET not set"
+            echo "Please add CRON_JOB_SECRET to repository secrets"
+            exit 1
+          fi
+          
+          # Make the API call
           response=$(curl -s -w "%{http_code}" -X POST \
             "${{ vars.SITE_URL }}/api/admin/cleanup-holds" \
             -H "Authorization: Bearer ${{ secrets.CRON_JOB_SECRET }}" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            -H "User-Agent: GitHub-Actions-Cleanup/1.0")
           
+          # Extract HTTP status and body
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | head -n -1)
           
           echo "📊 HTTP Status: $http_code"
-          echo "📄 Response: $body"
+          echo "📄 Response Body:"
+          echo "$body"
           
+          # Check if request was successful
           if [ "$http_code" -eq 200 ]; then
             echo "✅ Cleanup completed successfully"
+            
+            # Parse response for additional info
+            if command -v jq >/dev/null 2>&1; then
+              holds_deleted=$(echo "$body" | jq -r '.holdsDeleted // 0')
+              bookings_abandoned=$(echo "$body" | jq -r '.bookingsAbandoned // 0')
+              old_bookings_deleted=$(echo "$body" | jq -r '.oldBookingsDeleted // 0')
+              
+              echo "📈 Cleanup Summary:"
+              echo "   - Holds deleted: $holds_deleted"
+              echo "   - Bookings marked abandoned: $bookings_abandoned"
+              echo "   - Old bookings deleted: $old_bookings_deleted"
+            fi
+          elif [ "$http_code" -eq 401 ]; then
+            echo "❌ Authentication failed - check CRON_JOB_SECRET"
+            exit 1
+          elif [ "$http_code" -eq 404 ]; then
+            echo "❌ Endpoint not found - check SITE_URL"
+            exit 1
           else
-            echo "❌ Cleanup failed"
+            echo "❌ Cleanup failed with HTTP $http_code"
             exit 1
           fi
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "🚨 Hold cleanup failed at $(date)"
-          # Optional: Add notification logic here (Slack, Discord, etc.)
+          echo "🚨 Hold cleanup failed at $(date -u)"
+          echo "Check the logs above for details"
+          echo "Common issues:"
+          echo "  - SITE_URL not set in repository variables"
+          echo "  - CRON_JOB_SECRET not set in repository secrets"
+          echo "  - Website/API endpoint not accessible"
+          echo "  - Authentication configuration mismatch"
