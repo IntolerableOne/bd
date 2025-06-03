@@ -1,3 +1,4 @@
+// File: src/lib/holds.ts - Safer cleanup version
 import { prisma } from './prisma';
 import { type Prisma } from '@prisma/client';
 
@@ -91,7 +92,7 @@ export async function cleanupExpiredHolds(): Promise<{
   oldBookingsDeleted: number 
 }> {
   const now = new Date();
-  console.log(`Starting cleanup of expired holds (expired before ${now.toISOString()})...`);
+  console.log(`🧹 Starting SAFE cleanup of expired holds (expired before ${now.toISOString()})...`);
 
   let holdsDeletedCount = 0;
   let bookingsAbandonedCount = 0;
@@ -115,61 +116,81 @@ export async function cleanupExpiredHolds(): Promise<{
     });
 
     if (expiredHolds.length === 0) {
-      console.log('No expired holds found to clean up.');
+      console.log('✅ No expired holds found to clean up.');
       return { holdsDeleted: 0, bookingsAbandoned: 0, oldBookingsDeleted: 0 };
     }
 
-    console.log(`Found ${expiredHolds.length} expired holds. Processing...`);
+    console.log(`🔍 Found ${expiredHolds.length} expired holds. Processing safely...`);
 
-    // Process each expired hold
+    // Process each expired hold with extra safety checks
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       for (const hold of expiredHolds) {
         const availability = hold.availability;
         const booking = availability?.booking;
 
-        if (booking && !booking.paid) {
-          // Mark unpaid booking as abandoned (don't delete)
-          if (booking.status === 'PENDING') {
+        // SAFETY CHECK: Only process bookings that are clearly unpaid and pending
+        if (booking) {
+          console.log(`📋 Checking booking ${booking.id} - Status: ${booking.status}, Paid: ${booking.paid}, Amount: ${booking.amount}`);
+          
+          // EXTRA SAFETY: Multiple conditions must be true to mark as abandoned
+          const isSafeToAbandon = (
+            booking.paid === false &&                    // Must be unpaid
+            booking.status === 'PENDING' &&             // Must be pending status
+            booking.amount > 0 &&                       // Must have an amount (real booking)
+            booking.stripePaymentId === null            // No payment processing started
+          );
+          
+          if (isSafeToAbandon) {
+            // Double-check: ensure no payment has been processed in Stripe
+            // (In a real implementation, you might want to check Stripe directly)
+            
             await tx.booking.update({
               where: { id: booking.id },
               data: { status: 'ABANDONED' }
             });
             bookingsAbandonedCount++;
-            console.log(`Booking ${booking.id} marked as ABANDONED`);
+            console.log(`✅ Booking ${booking.id} safely marked as ABANDONED (was unpaid PENDING for expired hold)`);
+          } else {
+            console.log(`⚠️ Skipping booking ${booking.id} - doesn't meet safe abandonment criteria`);
+            console.log(`   - Paid: ${booking.paid}, Status: ${booking.status}, StripePaymentId: ${booking.stripePaymentId}`);
           }
         }
 
-        // Always release the hold to free up the slot
+        // Always safe to release expired holds (just removes the "reservation")
         await tx.hold.delete({
           where: { id: hold.id }
         });
         holdsDeletedCount++;
+        console.log(`✅ Expired hold ${hold.id} deleted (availability slot freed up)`);
       }
     });
 
-    // Separate cleanup: Delete very old abandoned bookings (older than 3 months) 
-    // to prevent database bloat
-    const threeMonthsAgo = new Date(now.getTime() - (90 * 24 * 60 * 60 * 1000));
+    // VERY CONSERVATIVE: Only delete abandoned bookings older than 6 months (not 3)
+    const sixMonthsAgo = new Date(now.getTime() - (180 * 24 * 60 * 60 * 1000));
     
+    // Additional safety: only delete abandoned bookings with no payment ID
     const deletedOldBookings = await prisma.booking.deleteMany({
       where: {
-        status: 'ABANDONED',
-        createdAt: {
-          lt: threeMonthsAgo
-        }
+        AND: [
+          { status: 'ABANDONED' },
+          { paid: false },                    // Extra safety: must be unpaid
+          { stripePaymentId: null },          // Extra safety: no Stripe payment
+          { createdAt: { lt: sixMonthsAgo } } // Extra safety: 6 months instead of 3
+        ]
       }
     });
     
     oldBookingsDeletedCount = deletedOldBookings.count;
     
     if (oldBookingsDeletedCount > 0) {
-      console.log(`Deleted ${oldBookingsDeletedCount} old abandoned bookings (>3 months)`);
+      console.log(`🗑️ Safely deleted ${oldBookingsDeletedCount} very old abandoned bookings (>6 months, unpaid, no payment ID)`);
     }
 
-    console.log('Expired holds cleanup completed');
-    console.log(`- Holds deleted: ${holdsDeletedCount}`);
-    console.log(`- Bookings marked abandoned: ${bookingsAbandonedCount}`);
-    console.log(`- Old bookings deleted: ${oldBookingsDeletedCount}`);
+    console.log('✅ SAFE cleanup completed');
+    console.log(`📊 Summary:`);
+    console.log(`   - Holds deleted: ${holdsDeletedCount} (freed up booking slots)`);
+    console.log(`   - Bookings marked abandoned: ${bookingsAbandonedCount} (were unpaid & pending)`);
+    console.log(`   - Very old bookings deleted: ${oldBookingsDeletedCount} (>6 months old)`);
 
     return { 
       holdsDeleted: holdsDeletedCount, 
@@ -178,8 +199,8 @@ export async function cleanupExpiredHolds(): Promise<{
     };
 
   } catch (error: any) {
-    console.error('Error during cleanup of expired holds:', error);
-    throw new HoldError('An error occurred during hold cleanup process.', 'CLEANUP_FAILED');
+    console.error('❌ Error during safe cleanup of expired holds:', error);
+    throw new HoldError('An error occurred during the safe hold cleanup process.', 'CLEANUP_FAILED');
   }
 }
 
