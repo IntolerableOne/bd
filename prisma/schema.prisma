@@ -1,5 +1,5 @@
 // File: prisma/schema.prisma
-// Add improvements gradually after baseline is stable
+// Fresh clean schema with all improvements
 
 generator client {
   provider = "prisma-client-js"
@@ -25,16 +25,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
-  // Add indexes for better performance
   @@index([email])
+  @@index([role])
 }
 
 model Availability {
   id        String   @id @default(cuid())
   date      DateTime
-  startTime String
-  endTime   String
-  midwife   String
+  startTime String   // Format: "HH:MM"
+  endTime   String   // Format: "HH:MM"
+  midwife   String   // Either "clare" or "natalie"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -42,13 +42,11 @@ model Availability {
   booking   Booking?
   hold      Hold?
   
-  // Add useful indexes
+  // Prevent duplicate slots for same midwife at same time
+  @@unique([date, startTime, midwife], name: "unique_slot_per_midwife")
   @@index([date])
   @@index([midwife])
   @@index([date, midwife])
-  
-  // Add unique constraint to prevent double bookings
-  @@unique([date, startTime, midwife], name: "unique_slot_per_midwife")
 }
 
 model Booking {
@@ -56,10 +54,10 @@ model Booking {
   name             String
   email            String
   phone            String
-  amount           Int
+  amount           Int           // Amount in pence
   paid             Boolean       @default(false)
   status           BookingStatus @default(PENDING)
-  stripePaymentId  String?
+  stripePaymentId  String?       // Stripe payment intent ID
   availabilityId   String        @unique
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -67,11 +65,12 @@ model Booking {
   // Foreign key relation
   availability     Availability  @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
   
-  // Add indexes for better queries
+  // Performance indexes
   @@index([email])
   @@index([paid])
   @@index([status])
   @@index([createdAt])
+  @@index([stripePaymentId])
 }
 
 model Hold {
@@ -84,6 +83,7 @@ model Hold {
   // Foreign key relation
   availability   Availability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
   
-  // Index for efficient cleanup
+  // Cleanup efficiency indexes
   @@index([expiresAt])
+  @@index([availabilityId])
 }
