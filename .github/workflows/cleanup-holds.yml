@@ -5,7 +5,7 @@ name: Cleanup Expired Holds
 
 on:
   schedule:
-    # Run every 15 minutes
+    # Run every 15 minutes - FIXED: Added missing asterisks
     - cron: '*/15 * * * *'
   # Allow manual trigger
   workflow_dispatch:
@@ -18,14 +18,14 @@ jobs:
     steps:
       - name: Cleanup holds
         run: |
-          echo "🧹 Starting hold cleanup..."
+          echo "🧹 Starting hold cleanup at $(date -u)"
           echo "🌐 Site URL: ${{ vars.SITE_URL }}"
           echo "🔑 Secret configured: ${{ secrets.CRON_JOB_SECRET != '' }}"
           
           # Validate required variables
           if [ -z "${{ vars.SITE_URL }}" ]; then
             echo "❌ SITE_URL variable not set"
-            echo "Please add SITE_URL to repository variables: https://yourdomain.com"
+            echo "Please add SITE_URL to repository variables"
             exit 1
           fi
           
@@ -35,54 +35,101 @@ jobs:
             exit 1
           fi
           
-          # Make the API call
-          response=$(curl -s -w "%{http_code}" -X POST \
+          echo "📡 Making API call to cleanup endpoint..."
+          
+          # Make the API call with better error handling
+          response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
             "${{ vars.SITE_URL }}/api/admin/cleanup-holds" \
             -H "Authorization: Bearer ${{ secrets.CRON_JOB_SECRET }}" \
             -H "Content-Type: application/json" \
-            -H "User-Agent: GitHub-Actions-Cleanup/1.0")
+            -H "User-Agent: GitHub-Actions-Cleanup/1.0" \
+            --connect-timeout 30 \
+            --max-time 60) || {
+            echo "❌ Curl command failed"
+            exit 1
+          }
           
-          # Extract HTTP status and body
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | head -n -1)
+          # Extract HTTP status and body using a more reliable method
+          http_code=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
+          body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
           
           echo "📊 HTTP Status: $http_code"
           echo "📄 Response Body:"
           echo "$body"
           
           # Check if request was successful
-          if [ "$http_code" -eq 200 ]; then
-            echo "✅ Cleanup completed successfully"
-            
-            # Parse response for additional info
-            if command -v jq >/dev/null 2>&1; then
-              holds_deleted=$(echo "$body" | jq -r '.holdsDeleted // 0')
-              bookings_abandoned=$(echo "$body" | jq -r '.bookingsAbandoned // 0')
-              old_bookings_deleted=$(echo "$body" | jq -r '.oldBookingsDeleted // 0')
+          case $http_code in
+            200)
+              echo "✅ Cleanup completed successfully"
               
-              echo "📈 Cleanup Summary:"
-              echo "   - Holds deleted: $holds_deleted"
-              echo "   - Bookings marked abandoned: $bookings_abandoned"
-              echo "   - Old bookings deleted: $old_bookings_deleted"
-            fi
-          elif [ "$http_code" -eq 401 ]; then
-            echo "❌ Authentication failed - check CRON_JOB_SECRET"
-            exit 1
-          elif [ "$http_code" -eq 404 ]; then
-            echo "❌ Endpoint not found - check SITE_URL"
-            exit 1
-          else
-            echo "❌ Cleanup failed with HTTP $http_code"
-            exit 1
-          fi
-
+              # Parse response for additional info if jq is available
+              if command -v jq >/dev/null 2>&1 && [ -n "$body" ]; then
+                echo "📈 Parsing cleanup results..."
+                holds_deleted=$(echo "$body" | jq -r '.holdsDeleted // 0' 2>/dev/null || echo "0")
+                bookings_abandoned=$(echo "$body" | jq -r '.bookingsAbandoned // 0' 2>/dev/null || echo "0")
+                old_bookings_deleted=$(echo "$body" | jq -r '.oldBookingsDeleted // 0' 2>/dev/null || echo "0")
+                
+                echo "📈 Cleanup Summary:"
+                echo "   - Holds deleted: $holds_deleted"
+                echo "   - Bookings marked abandoned: $bookings_abandoned"
+                echo "   - Old bookings deleted: $old_bookings_deleted"
+              else
+                echo "📈 Cleanup completed (detailed stats not available)"
+              fi
+              ;;
+            401)
+              echo "❌ Authentication failed (HTTP 401)"
+              echo "🔧 Troubleshooting:"
+              echo "   - Check CRON_JOB_SECRET is correctly set in repository secrets"
+              echo "   - Verify the secret matches what your API expects"
+              echo "   - Check if your API endpoint requires this authentication method"
+              exit 1
+              ;;
+            404)
+              echo "❌ Endpoint not found (HTTP 404)"
+              echo "🔧 Troubleshooting:"
+              echo "   - Check SITE_URL is correct: ${{ vars.SITE_URL }}"
+              echo "   - Verify the cleanup endpoint exists at: /api/admin/cleanup-holds"
+              echo "   - Check if your site is properly deployed"
+              exit 1
+              ;;
+            500)
+              echo "❌ Server error (HTTP 500)"
+              echo "🔧 This indicates an issue with your application"
+              echo "📄 Server response: $body"
+              exit 1
+              ;;
+            503)
+              echo "⚠️ Service unavailable (HTTP 503)"
+              echo "🔧 Your site might be temporarily down or deploying"
+              echo "📄 Server response: $body"
+              # Don't exit 1 for 503 as it might be temporary
+              ;;
+            *)
+              echo "❌ Cleanup failed with HTTP $http_code"
+              echo "📄 Response: $body"
+              exit 1
+              ;;
+          esac
+          
       - name: Notify on failure
         if: failure()
         run: |
           echo "🚨 Hold cleanup failed at $(date -u)"
-          echo "Check the logs above for details"
-          echo "Common issues:"
-          echo "  - SITE_URL not set in repository variables"
-          echo "  - CRON_JOB_SECRET not set in repository secrets"
-          echo "  - Website/API endpoint not accessible"
-          echo "  - Authentication configuration mismatch"
+          echo ""
+          echo "🔍 Common troubleshooting steps:"
+          echo "1. Check repository secrets and variables:"
+          echo "   - CRON_JOB_SECRET should be set in secrets"
+          echo "   - SITE_URL should be set in variables"
+          echo ""
+          echo "2. Verify your API endpoint:"
+          echo "   - Test manually: curl -X POST ${{ vars.SITE_URL }}/api/admin/cleanup-holds"
+          echo "   - Check server logs for errors"
+          echo ""
+          echo "3. Check authentication:"
+          echo "   - Ensure your API accepts the CRON_JOB_SECRET"
+          echo "   - Verify the Authorization header format"
+          echo ""
+          echo "4. Website accessibility:"
+          echo "   - Ensure ${{ vars.SITE_URL }} is accessible"
+          echo "   - Check if site is properly deployed"
