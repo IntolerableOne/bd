@@ -2,14 +2,7 @@
 import Button from "./ui/button.astro";
 ---
 
-<form
-  action="https://api.web3forms.com/submit"
-  method="POST"
-  id="form"
-  class="needs-validation"
-  novalidate>
-  <input type="hidden" name="access_key" value="YOUR_ACCESS_KEY_HERE" />
-  <input type="checkbox" class="hidden" style="display:none" name="botcheck" />
+<form id="contact-form" class="needs-validation" novalidate>
   <div class="mb-5">
     <input
       type="text"
@@ -71,54 +64,72 @@ import Button from "./ui/button.astro";
   .was-validated :invalid {
     border-color: #dc3545;
   }
+
+  .sending {
+    opacity: 0.7;
+    pointer-events: none;
+  }
 </style>
 
 <script is:inline>
-  const form = document.getElementById("form");
+  const form = document.getElementById("contact-form");
   const result = document.getElementById("result");
 
-  form.addEventListener("submit", function (e) {
+  form.addEventListener("submit", async function (e) {
     e.preventDefault();
-    form.classList.add("was-validated");
+    
+    // Add visual feedback
+    form.classList.add("was-validated", "sending");
+    result.innerHTML = "Sending message...";
+    result.className = "mt-3 text-center text-blue-600";
+
     if (!form.checkValidity()) {
       form.querySelectorAll(":invalid")[0].focus();
+      form.classList.remove("sending");
+      result.innerHTML = "";
       return;
     }
+
     const formData = new FormData(form);
-    const object = Object.fromEntries(formData);
-    const json = JSON.stringify(object);
+    const data = {
+      name: formData.get("name"),
+      email: formData.get("email"),
+      message: formData.get("message")
+    };
 
-    result.innerHTML = "Sending...";
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(data),
+      });
 
-    fetch("https://api.web3forms.com/submit", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: json,
-    })
-      .then(async (response) => {
-        let json = await response.json();
-        if (response.status == 200) {
-          result.classList.add("text-green-500");
-          result.innerHTML = json.message;
-        } else {
-          console.log(response);
-          result.classList.add("text-red-500");
-          result.innerHTML = json.message;
-        }
-      })
-      .catch((error) => {
-        console.log(error);
-        result.innerHTML = "Something went wrong!";
-      })
-      .then(function () {
+      const responseData = await response.json();
+
+      if (response.ok) {
+        result.className = "mt-3 text-center text-green-600";
+        result.innerHTML = "✅ Message sent successfully! We'll get back to you soon.";
         form.reset();
         form.classList.remove("was-validated");
-        setTimeout(() => {
-          result.style.display = "none";
-        }, 5000);
-      });
+      } else {
+        throw new Error(responseData.error || 'Failed to send message');
+      }
+    } catch (error) {
+      console.error("Contact form error:", error);
+      result.className = "mt-3 text-center text-red-600";
+      result.innerHTML = "❌ Failed to send message. Please try again or email us directly.";
+    } finally {
+      form.classList.remove("sending");
+      
+      // Clear result message after 10 seconds
+      setTimeout(() => {
+        if (result.className.includes("green")) {
+          result.innerHTML = "";
+        }
+      }, 10000);
+    }
   });
 </script>

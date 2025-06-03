@@ -1,5 +1,5 @@
 // File: prisma/schema.prisma
-// Fresh clean schema with all improvements
+// Fixed schema with ABANDONED status added
 
 generator client {
   provider = "prisma-client-js"
@@ -15,6 +15,7 @@ enum BookingStatus {
   CONFIRMED
   CANCELLED
   COMPLETED
+  ABANDONED  // ADDED: Missing ABANDONED status
 }
 
 model User {

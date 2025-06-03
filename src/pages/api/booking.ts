@@ -16,7 +16,7 @@ export async function GET({ request }: APIContext) {
   try {
     console.log('📊 Admin requesting booking data...');
     
-    // Fetch ALL bookings for admin (both paid and unpaid for debugging)
+    // Fetch ALL bookings for admin (paid, unpaid, abandoned, cancelled)
     const allBookings: BookingWithAvailability[] = await prisma.booking.findMany({
       include: {
         availability: true,
@@ -28,22 +28,28 @@ export async function GET({ request }: APIContext) {
 
     console.log(`📋 Found ${allBookings.length} total bookings`);
     
-    // Separate paid and unpaid for logging
-    const paidBookings = allBookings.filter(b => b.paid);
-    const unpaidBookings = allBookings.filter(b => !b.paid);
+    // Categorize bookings by status
+    const confirmedBookings = allBookings.filter(b => b.paid && b.status === 'CONFIRMED');
+    const pendingBookings = allBookings.filter(b => !b.paid && b.status === 'PENDING');
+    const abandonedBookings = allBookings.filter(b => b.status === 'ABANDONED');
+    const cancelledBookings = allBookings.filter(b => b.status === 'CANCELLED');
     
-    console.log(`💳 Paid bookings: ${paidBookings.length}`);
-    console.log(`⏳ Unpaid bookings: ${unpaidBookings.length}`);
+    console.log(`💳 Confirmed bookings: ${confirmedBookings.length}`);
+    console.log(`⏳ Pending bookings: ${pendingBookings.length}`);
+    console.log(`🏃 Abandoned bookings: ${abandonedBookings.length}`);
+    console.log(`❌ Cancelled bookings: ${cancelledBookings.length}`);
     
-    if (unpaidBookings.length > 0) {
-      console.log('⚠️ Unpaid bookings found (may indicate webhook issues):');
-      unpaidBookings.forEach(booking => {
-        const ageMinutes = Math.floor((new Date().getTime() - new Date(booking.createdAt).getTime()) / (1000 * 60));
-        console.log(`  - ${booking.id}: ${booking.name} (${booking.email}) - Age: ${ageMinutes} minutes`);
-      });
+    // Log recent abandoned bookings for follow-up
+    const recentAbandoned = abandonedBookings.filter(b => {
+      const daysSinceCreated = (new Date().getTime() - new Date(b.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+      return daysSinceCreated <= 30; // Within last 30 days
+    });
+    
+    if (recentAbandoned.length > 0) {
+      console.log(`📧 Recent abandoned bookings for follow-up: ${recentAbandoned.length}`);
     }
 
-    // Calculate earnings from paid bookings only
+    // Calculate earnings from confirmed bookings only
     const earnings = {
       monthly: {} as Record<string, number>,
       yearly: 0,
@@ -51,7 +57,7 @@ export async function GET({ request }: APIContext) {
 
     const currentYear = new Date().getFullYear();
 
-    paidBookings.forEach((booking: BookingWithAvailability) => {
+    confirmedBookings.forEach((booking: BookingWithAvailability) => {
       const amountInPence = Number(booking.amount);
 
       if (booking.availability && !isNaN(amountInPence)) {
@@ -72,26 +78,29 @@ export async function GET({ request }: APIContext) {
 
     console.log(`💰 Total yearly earnings: £${(earnings.yearly / 100).toFixed(2)}`);
 
-    // Return ALL bookings but mark which are paid/unpaid for admin visibility
-    const bookingsWithStatus = allBookings.map(booking => ({
+    // Return ALL bookings with enhanced metadata
+    const bookingsWithMetadata = allBookings.map(booking => ({
       ...booking,
-      _debug: {
+      _metadata: {
+        status: booking.status,
         isPaid: booking.paid,
-        ageMinutes: Math.floor((new Date().getTime() - new Date(booking.createdAt).getTime()) / (1000 * 60)),
-        hasAvailability: !!booking.availability
+        ageInDays: Math.floor((new Date().getTime() - new Date(booking.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+        hasAvailability: !!booking.availability,
+        isRecentAbandoned: booking.status === 'ABANDONED' && 
+          ((new Date().getTime() - new Date(booking.createdAt).getTime()) / (1000 * 60 * 60 * 24)) <= 30
       }
     }));
 
     return new Response(JSON.stringify({ 
-      bookings: bookingsWithStatus, 
+      bookings: bookingsWithMetadata, 
       earnings,
-      _debug: {
-        totalBookings: allBookings.length,
-        paidBookings: paidBookings.length,
-        unpaidBookings: unpaidBookings.length,
-        oldestUnpaidMinutes: unpaidBookings.length > 0 ? Math.max(...unpaidBookings.map(b => 
-          Math.floor((new Date().getTime() - new Date(b.createdAt).getTime()) / (1000 * 60))
-        )) : 0
+      statistics: {
+        total: allBookings.length,
+        confirmed: confirmedBookings.length,
+        pending: pendingBookings.length,
+        abandoned: abandonedBookings.length,
+        cancelled: cancelledBookings.length,
+        recentAbandoned: recentAbandoned.length
       }
     }), {
       status: 200,
@@ -105,7 +114,15 @@ export async function GET({ request }: APIContext) {
       error: 'Failed to fetch bookings', 
       details: error.message,
       bookings: [],
-      earnings: { monthly: {}, yearly: 0 }
+      earnings: { monthly: {}, yearly: 0 },
+      statistics: {
+        total: 0,
+        confirmed: 0,
+        pending: 0,
+        abandoned: 0,
+        cancelled: 0,
+        recentAbandoned: 0
+      }
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

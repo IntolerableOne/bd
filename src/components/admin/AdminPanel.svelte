@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import AdminHeader from './AdminHeader.svelte';
   import AdminCalendar from './AdminCalendar.svelte';
   import BookingsTable from './BookingsTable.svelte';
@@ -31,11 +31,23 @@
     totalBookings: 0,
     paidBookings: 0,
     unpaidBookings: 0,
+    abandonedBookings: 0,
     totalSlots: 0,
     availableSlots: 0,
     bookedSlots: 0,
     heldSlots: 0
   };
+
+  // Email testing variables
+  let emailConfigStatus = null;
+  let testEmailAddress = '';
+  let emailTesting = false;
+  let emailTestResult = null;
+
+  // Auto-cleanup variables
+  let autoCleanupEnabled = true;
+  let lastCleanupTime = null;
+  let cleanupInterval = null;
 
   function getWeekDates(date) {
     const dates = [];
@@ -59,7 +71,8 @@
   $: {
     const allBookingsCount = bookings.length;
     const paidCount = bookings.filter(b => b.paid).length;
-    const unpaidCount = bookings.filter(b => !b.paid).length;
+    const unpaidCount = bookings.filter(b => !b.paid && b.status === 'PENDING').length;
+    const abandonedCount = bookings.filter(b => b.status === 'ABANDONED').length;
     
     const totalSlotsCount = slots.length;
     const bookedSlotsCount = slots.filter(s => s.booking).length;
@@ -70,6 +83,7 @@
       totalBookings: allBookingsCount,
       paidBookings: paidCount,
       unpaidBookings: unpaidCount,
+      abandonedBookings: abandonedCount,
       totalSlots: totalSlotsCount,
       availableSlots: availableSlotsCount,
       bookedSlots: bookedSlotsCount,
@@ -110,6 +124,31 @@
     earnings = { monthly: {}, yearly: 0 };
     authError = '';
     dataLoadError = '';
+    stopAutoCleanup();
+  }
+
+  // Auto-cleanup functions
+  function startAutoCleanup() {
+    if (cleanupInterval) return; // Already running
+    
+    cleanupInterval = setInterval(async () => {
+      if (autoCleanupEnabled && isAuthenticated) {
+        console.log('🔄 Auto-triggering cleanup...');
+        try {
+          await triggerCleanup();
+          lastCleanupTime = new Date();
+        } catch (error) {
+          console.error('Auto-cleanup failed:', error);
+        }
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+  }
+  
+  function stopAutoCleanup() {
+    if (cleanupInterval) {
+      clearInterval(cleanupInterval);
+      cleanupInterval = null;
+    }
   }
 
   async function triggerCleanup() {
@@ -127,17 +166,100 @@
 
       if (response.ok) {
         const result = await response.json();
-        console.log('Cleanup completed:', result);
+        console.log('✅ Cleanup completed:', result);
+        
+        // Update UI with success message
+        if (result.holdsDeleted > 0 || result.bookingsAbandoned > 0 || result.oldBookingsDeleted > 0) {
+          dataLoadError = `✅ Cleanup: Removed ${result.holdsDeleted} expired holds, marked ${result.bookingsAbandoned} bookings as abandoned, deleted ${result.oldBookingsDeleted} old bookings.`;
+        } else {
+          dataLoadError = `✅ Cleanup: No expired items found.`;
+        }
+        
         // Reload data to reflect changes
         await loadData();
-        dataLoadError = `Cleanup completed: ${result.holdsDeleted} holds and ${result.unpaidBookingsDeleted} unpaid bookings removed.`;
+        
+        // Clear success message after 5 seconds
+        setTimeout(() => {
+          if (dataLoadError.startsWith('✅')) {
+            dataLoadError = '';
+          }
+        }, 5000);
+        
       } else {
         const errorData = await response.json().catch(() => ({}));
-        dataLoadError = `Cleanup failed: ${errorData.error || 'Unknown error'}`;
+        dataLoadError = `❌ Cleanup failed: ${errorData.error || 'Unknown error'}`;
       }
     } catch (error) {
-      console.error('Cleanup request failed:', error);
-      dataLoadError = `Cleanup request failed: ${error.message}`;
+      console.error('❌ Cleanup request failed:', error);
+      dataLoadError = `❌ Cleanup request failed: ${error.message}`;
+    }
+  }
+
+  // Email testing functions
+  async function checkEmailConfig() {
+    try {
+      const token = localStorage.getItem('adminToken');
+      const response = await fetch('/api/test-email', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        emailConfigStatus = data.environment;
+      } else {
+        emailConfigStatus = { error: 'Failed to check email config' };
+      }
+    } catch (error) {
+      console.error('Email config check failed:', error);
+      emailConfigStatus = { error: error.message };
+    }
+  }
+
+  async function sendTestEmail(testType) {
+    if (!testEmailAddress) {
+      emailTestResult = { success: false, message: 'Please enter a test email address' };
+      return;
+    }
+
+    emailTesting = true;
+    emailTestResult = null;
+
+    try {
+      const token = localStorage.getItem('adminToken');
+      const response = await fetch('/api/test-email', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          testType,
+          recipientEmail: testEmailAddress
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        const testKey = testType === 'contact-form' ? 'contactForm' : 
+                      testType === 'booking-confirmation' ? 'userConfirmation' : 'adminNotification';
+        const result = data[testKey];
+        emailTestResult = {
+          success: result?.success || false,
+          message: result?.success ? 'Test email sent successfully!' : (result?.error || 'Test failed')
+        };
+      } else {
+        emailTestResult = { success: false, message: data.error || 'Test failed' };
+      }
+    } catch (error) {
+      emailTestResult = { success: false, message: error.message };
+    } finally {
+      emailTesting = false;
+      
+      // Clear result after 5 seconds
+      setTimeout(() => {
+        emailTestResult = null;
+      }, 5000);
     }
   }
 
@@ -321,12 +443,22 @@
     currentDate = newDate;
   }
 
+  // Start auto-cleanup when component mounts and user is authenticated
+  $: if (isAuthenticated && autoCleanupEnabled && !cleanupInterval) {
+    startAutoCleanup();
+  }
+
   onMount(async () => {
     const token = localStorage.getItem('adminToken');
     if (token) {
       isAuthenticated = true; 
       await loadData();
     }
+  });
+
+  // Cleanup on component destroy
+  onDestroy(() => {
+    stopAutoCleanup();
   });
 
   let filteredBookingsForTable = [];
@@ -448,8 +580,12 @@
               <div class="text-xl font-bold text-green-700">{debugStats.paidBookings}</div>
             </div>
             <div class="bg-white p-3 rounded border">
-              <div class="text-red-600 font-medium">Unpaid Bookings</div>
-              <div class="text-xl font-bold text-red-700">{debugStats.unpaidBookings}</div>
+              <div class="text-yellow-600 font-medium">Pending Bookings</div>
+              <div class="text-xl font-bold text-yellow-700">{debugStats.unpaidBookings}</div>
+            </div>
+            <div class="bg-white p-3 rounded border">
+              <div class="text-orange-600 font-medium">Abandoned Bookings</div>
+              <div class="text-xl font-bold text-orange-700">{debugStats.abandonedBookings}</div>
             </div>
             <div class="bg-white p-3 rounded border">
               <div class="text-gray-600 font-medium">Total Slots</div>
@@ -466,6 +602,108 @@
             <div class="bg-white p-3 rounded border">
               <div class="text-yellow-600 font-medium">Held Slots</div>
               <div class="text-xl font-bold text-yellow-700">{debugStats.heldSlots}</div>
+            </div>
+          </div>
+
+          <!-- Auto-cleanup status -->
+          <div class="mt-4 pt-4 border-t border-blue-200">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-semibold text-blue-800">Auto-Cleanup Status</h4>
+              <label class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  bind:checked={autoCleanupEnabled}
+                  class="rounded"
+                />
+                <span class="text-sm">Enable Auto-Cleanup</span>
+              </label>
+            </div>
+            <div class="text-sm text-blue-700">
+              <p>Status: {autoCleanupEnabled ? '🟢 Active' : '🔴 Disabled'}</p>
+              {#if lastCleanupTime}
+                <p>Last cleanup: {lastCleanupTime.toLocaleTimeString()}</p>
+              {/if}
+              <p class="text-xs text-blue-600 mt-1">
+                Auto-cleanup runs every 10 minutes while admin panel is open
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Email Testing Section -->
+        <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
+          <h3 class="text-lg font-semibold text-purple-800 mb-3">Email System Testing</h3>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Email Configuration Status -->
+            <div class="bg-white p-3 rounded border">
+              <h4 class="font-medium text-purple-700 mb-2">Configuration Status</h4>
+              <button
+                on:click={checkEmailConfig}
+                class="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 mb-2">
+                Check Email Config
+              </button>
+              {#if emailConfigStatus}
+                <div class="text-xs space-y-1">
+                  <div class="flex justify-between">
+                    <span>SMTP Host:</span>
+                    <span class="{emailConfigStatus.EMAIL_HOST === 'SET' ? 'text-green-600' : 'text-red-600'}">
+                      {emailConfigStatus.EMAIL_HOST}
+                    </span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span>Email User:</span>
+                    <span class="{emailConfigStatus.EMAIL_USER === 'SET' ? 'text-green-600' : 'text-red-600'}">
+                      {emailConfigStatus.EMAIL_USER}
+                    </span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span>Team Address:</span>
+                    <span class="{emailConfigStatus.TEAM_EMAIL_ADDRESS !== 'NOT SET' ? 'text-green-600' : 'text-red-600'}">
+                      {emailConfigStatus.TEAM_EMAIL_ADDRESS !== 'NOT SET' ? 'SET' : 'NOT SET'}
+                    </span>
+                  </div>
+                </div>
+              {/if}
+            </div>
+
+            <!-- Email Testing -->
+            <div class="bg-white p-3 rounded border">
+              <h4 class="font-medium text-purple-700 mb-2">Send Test Emails</h4>
+              <div class="space-y-2">
+                <input
+                  type="email"
+                  placeholder="Test email address"
+                  bind:value={testEmailAddress}
+                  class="w-full px-2 py-1 border rounded text-sm">
+                
+                <div class="flex gap-2">
+                  <button
+                    on:click={() => sendTestEmail('contact-form')}
+                    class="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                    disabled={emailTesting}>
+                    Test Contact
+                  </button>
+                  <button
+                    on:click={() => sendTestEmail('booking-confirmation')}
+                    class="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                    disabled={emailTesting}>
+                    Test Booking
+                  </button>
+                  <button
+                    on:click={() => sendTestEmail('admin-notification')}
+                    class="px-2 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700"
+                    disabled={emailTesting}>
+                    Test Admin
+                  </button>
+                </div>
+                
+                {#if emailTestResult}
+                  <div class="text-xs p-2 rounded {emailTestResult.success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                    {emailTestResult.message}
+                  </div>
+                {/if}
+              </div>
             </div>
           </div>
         </div>

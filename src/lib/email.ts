@@ -1,3 +1,6 @@
+// File: src/lib/email.ts
+// Fixed version with corrected method name and null checks
+
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
@@ -20,6 +23,12 @@ interface AdminBookingNotificationDetails {
   midwifeName: string;
   bookingId: string;
   bookingAmount: number;
+}
+
+interface ContactFormDetails {
+  name: string;
+  email: string;
+  message: string;
 }
 
 let transporter: Transporter | null = null;
@@ -46,13 +55,6 @@ function validateEmailConfig() {
       missingVars: missing
     };
     console.warn('❌ Email configuration incomplete. Missing environment variables:', missing.join(', '));
-    console.warn('Required email environment variables:');
-    console.warn('- EMAIL_HOST (e.g., smtp.gmail.com)');
-    console.warn('- EMAIL_PORT (e.g., 587)');
-    console.warn('- EMAIL_USER (your email address)');
-    console.warn('- EMAIL_PASS (your app password, not regular password)');
-    console.warn('- EMAIL_FROM (sender email address)');
-    console.warn('- TEAM_EMAIL_ADDRESS (recipient for admin notifications)');
     return false;
   }
   
@@ -62,6 +64,7 @@ function validateEmailConfig() {
 // Initialize transporter
 if (validateEmailConfig()) {
   try {
+    // FIXED: Changed createTransporter to createTransport
     transporter = nodemailer.createTransport({
       host: process.env.EMAIL_HOST!,
       port: parseInt(process.env.EMAIL_PORT || "587", 10),
@@ -70,23 +73,25 @@ if (validateEmailConfig()) {
         user: process.env.EMAIL_USER!,
         pass: process.env.EMAIL_PASS!,
       },
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 5000,     // 5 seconds
-      socketTimeout: 10000,      // 10 seconds
+      connectionTimeout: 10000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
     });
     
     emailConfigStatus.configured = true;
     console.log('✅ Email transporter configured successfully');
     
-    // Test the connection
-    transporter.verify((error, success) => {
-      if (error) {
-        console.error('❌ Email configuration test failed:', error.message);
-        emailConfigStatus.configured = false;
-      } else {
-        console.log('✅ Email server connection verified');
-      }
-    });
+    // Test the connection - FIXED: Added null check
+    if (transporter) {
+      transporter.verify((error, success) => {
+        if (error) {
+          console.error('❌ Email configuration test failed:', error.message);
+          emailConfigStatus.configured = false;
+        } else {
+          console.log('✅ Email server connection verified');
+        }
+      });
+    }
     
   } catch (error: any) {
     console.error('❌ Failed to create email transporter:', error.message);
@@ -151,8 +156,7 @@ export async function sendUserBookingConfirmationEmail(details: UserBookingConfi
     console.log('✅ User booking confirmation email sent successfully to:', to);
   } catch (error: any) {
     console.error(`❌ Failed to send user confirmation email to ${to}:`, error.message);
-    console.error('Email details:', { to, bookingId, error: error.code || error.errno });
-    throw error; // Re-throw to let caller handle if needed
+    throw error;
   }
 }
 
@@ -166,11 +170,6 @@ export async function sendAdminBookingNotificationEmail(details: AdminBookingNot
   }
 
   const { to, userName, userEmail, userPhone, bookingDate, bookingTime, midwifeName, bookingId, bookingAmount } = details;
-
-  if (!to || !userName || !userEmail || !bookingDate || !bookingTime || !midwifeName || !bookingId || !bookingAmount) {
-    console.error('❌ Admin notification email not sent: Missing required details');
-    return;
-  }
 
   const formattedDate = new Date(bookingDate).toLocaleDateString('en-GB', {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
@@ -209,8 +208,81 @@ export async function sendAdminBookingNotificationEmail(details: AdminBookingNot
     console.log('✅ Admin booking notification email sent successfully to:', to);
   } catch (error: any) {
     console.error(`❌ Failed to send admin notification email to ${to}:`, error.message);
-    console.error('Email details:', { to, bookingId, error: error.code || error.errno });
-    throw error; // Re-throw to let caller handle if needed
+    throw error;
+  }
+}
+
+// Enhanced function to send to multiple team members
+export async function sendAdminBookingNotificationToTeam(details: Omit<AdminBookingNotificationDetails, 'to'>): Promise<void> {
+  const teamEmails = process.env.TEAM_EMAIL_ADDRESS?.split(',') || ['clare@birthdebrief.com'];
+  
+  console.log('📧 Sending admin notifications to team:', teamEmails.join(', '));
+  
+  const emailPromises = teamEmails.map(email => 
+    sendAdminBookingNotificationEmail({
+      ...details,
+      to: email.trim()
+    })
+  );
+  
+  try {
+    await Promise.all(emailPromises);
+    console.log('✅ All admin notification emails sent successfully');
+  } catch (error: any) {
+    console.error('❌ Some admin notification emails failed:', error.message);
+    throw error;
+  }
+}
+
+// Contact form email function
+export async function sendContactFormEmail(details: ContactFormDetails): Promise<void> {
+  if (!transporter || !emailConfigStatus.configured) {
+    const errorMsg = emailConfigStatus.missingVars.length > 0 
+      ? `Email not configured. Missing: ${emailConfigStatus.missingVars.join(', ')}`
+      : 'Email transporter not initialized';
+    console.error('❌ Contact form email not sent:', errorMsg);
+    return;
+  }
+
+  const { name, email, message } = details;
+  const teamEmails = process.env.TEAM_EMAIL_ADDRESS?.split(',') || ['clare@birthdebrief.com'];
+
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+      <h2 style="color: #15803d;">New Contact Form Message</h2>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+        <tr><td style="padding: 8px; font-weight: bold; width: 30%;">Name:</td><td style="padding: 8px;">${name}</td></tr>
+        <tr><td style="padding: 8px; font-weight: bold;">Email:</td><td style="padding: 8px;"><a href="mailto:${email}">${email}</a></td></tr>
+        <tr><td style="padding: 8px; font-weight: bold;">Received:</td><td style="padding: 8px;">${new Date().toLocaleString('en-GB')}</td></tr>
+      </table>
+      <h3>Message:</h3>
+      <div style="background: #f9f9f9; padding: 15px; border-left: 4px solid #15803d; margin: 10px 0;">
+        ${message.replace(/\n/g, '<br>')}
+      </div>
+      <p style="margin-top: 20px; font-size: 0.9em; color: #666;">
+        Please reply directly to <a href="mailto:${email}">${email}</a>
+      </p>
+    </div>
+  `;
+
+  const emailPromises = teamEmails.map(teamEmail => {
+    const mailOptions = {
+      from: process.env.EMAIL_FROM!,
+      to: teamEmail.trim(),
+      replyTo: email, // Allow direct reply to the person who sent the message
+      subject: `Contact Form: Message from ${name}`,
+      html: emailHtml,
+    };
+
+    return transporter!.sendMail(mailOptions);
+  });
+
+  try {
+    await Promise.all(emailPromises);
+    console.log('✅ Contact form emails sent to team:', teamEmails.join(', '));
+  } catch (error: any) {
+    console.error('❌ Failed to send contact form emails:', error.message);
+    throw error;
   }
 }
 
